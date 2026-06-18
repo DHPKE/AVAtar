@@ -13,6 +13,7 @@ const authRouter                        = require('./routes/auth');
 const articlesRouter                    = require('./routes/articles');
 const categoriesRouter                  = require('./routes/categories');
 const suppliersRouter                   = require('./routes/suppliers');
+const movementsRouter                   = require('./routes/movements');
 
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
 
@@ -37,11 +38,11 @@ function createApp() {
   app.use('/api/articles',   articlesRouter);
   app.use('/api/categories', categoriesRouter);
   app.use('/api/suppliers',  suppliersRouter);
+  app.use('/api/movements', movementsRouter);
 
-  // Phase 4+: movements, rentals, users will be added here
-  // app.use('/api/movements', movementsRouter);
-  // app.use('/api/rentals',   rentalsRouter);
-  // app.use('/api/users',     usersRouter);
+  // Phase 5+: rentals, users will be added here
+  // app.use('/api/rentals', rentalsRouter);
+  // app.use('/api/users',   usersRouter);
 
   // ── Catch-all handlers (must be last) ─────────────────────────────────────
   app.use(notFoundHandler);
