@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── AVAtar design tokens ───────────────────────────────────────────────────── */
+:root {
+  --nav:     #0A0B0C;
+  --bg:      #111214;
+  --surface: #1A1C1F;
+  --card:    #222528;
+  --border:  #2A3035;
+  --accent:  #008FD0;
+  --accent-hover: #006FA3;
+  --success: #22C55E;
+  --warning: #F59E0B;
+  --error:   #EF4444;
+  --text:    #E4EDFF;
+  --muted:   #4A6080;
+
+  /* Article type colours */
+  --type-consumable: #A855F7;
+  --type-bundle:     #F97316;
+  --type-equipment:  #008FD0;
+  --type-rental:     #14B8A6;
+  --type-cable:      #EAB308;
+}
+
+/* ── Base ───────────────────────────────────────────────────────────────────── */
+html, body, #app {
+  height: 100%;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+/* ── Focus ring ─────────────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── Scrollbar ──────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar       { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* ── Utility: article type badge background ─────────────────────────────────── */
+@layer components {
+  .type-badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium;
+  }
+  .type-badge--consumable { background: rgba(168,85,247,.15);  color: var(--type-consumable); }
+  .type-badge--bundle     { background: rgba(249,115,22,.15);  color: var(--type-bundle);     }
+  .type-badge--equipment  { background: rgba(0,143,208,.15);   color: var(--type-equipment);  }
+  .type-badge--rental     { background: rgba(20,184,166,.15);  color: var(--type-rental);     }
+  .type-badge--cable      { background: rgba(234,179,8,.15);   color: var(--type-cable);      }
+}

@@ -100,6 +100,13 @@ CREATE TABLE IF NOT EXISTS movements (
   created_at       TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 
+-- ─── Einstellungen (Key-Value Store) ────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
 -- ─── Trigger: articles.updated_at automatisch setzen ─────────────────────────
 CREATE TRIGGER IF NOT EXISTS trg_articles_updated_at
 AFTER UPDATE ON articles

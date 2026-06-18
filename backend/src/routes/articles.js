@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const path   = require('path');
 const fs     = require('fs');
+const QRCode = require('qrcode');
 const config = require('../config');
 const { getDb }           = require('../db/init');
 const { authenticate }    = require('../middleware/authenticate');
@@ -353,6 +354,23 @@ router.put('/:id/serials/:snId', requireMinRole('warehouse_manager'), (req, res,
 
     const updated = db.prepare('SELECT * FROM serial_numbers WHERE id = ?').get(sn.id);
     res.json({ serial_number: updated });
+  } catch (err) { next(err); }
+});
+
+// ─── GET /api/articles/:id/qrcode.svg ────────────────────────────────────────
+/** Returns an SVG QR code for the article's barcode (or article_number if no barcode). */
+router.get('/:id/qrcode.svg', async (req, res, next) => {
+  try {
+    const db      = getDb();
+    const article = db.prepare('SELECT * FROM articles WHERE id = ?').get(req.params.id);
+    if (!article) return next(createError(404, 'Artikel nicht gefunden'));
+
+    const content = article.barcode || article.article_number;
+    const svg     = await QRCode.toString(content, { type: 'svg', width: 200, margin: 1 });
+
+    res.setHeader('Content-Type', 'image/svg+xml');
+    res.setHeader('Content-Disposition', `inline; filename="qr-${article.article_number}.svg"`);
+    res.send(svg);
   } catch (err) { next(err); }
 });
 

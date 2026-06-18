@@ -71,16 +71,16 @@ avatar/
 | Phase | Inhalt | Status |
 |---|---|---|
 | 1 | DB-Schema + Express-Grundgerüst | ✅ |
-| 2 | JWT-Authentifizierung + Rollen | ⬜ |
-| 3 | Artikel-API (CRUD + Barcode-Lookup) | ⬜ |
-| 4 | Bewegungs-API (Eingang/Ausgang) | ⬜ |
-| 5 | Verleih-API + Seriennummern | ⬜ |
-| 6 | E-Mail-Benachrichtigungen | ⬜ |
-| 7 | Frontend Setup (Vue 3 + Vite) | ⬜ |
-| 8 | Staff UI (Touch/Tablet) | ⬜ |
-| 9 | Admin UI (Dashboard + Tabellen) | ⬜ |
-| 10 | Benutzerverwaltung + Settings | ⬜ |
-| 11 | Polish + Deployment | ⬜ |
+| 2 | JWT-Authentifizierung + Rollen | ✅ |
+| 3 | Artikel-API (CRUD + Barcode-Lookup) | ✅ |
+| 4 | Bewegungs-API (Eingang/Ausgang) | ✅ |
+| 5 | Verleih-API + Seriennummern | ✅ |
+| 6 | E-Mail-Benachrichtigungen | ✅ |
+| 7 | Frontend Setup (Vue 3 + Vite) | ✅ |
+| 8 | Staff UI (Touch/Tablet) | ✅ |
+| 9 | Admin UI (Dashboard + Tabellen) | ✅ |
+| 10 | Benutzerverwaltung + Settings | ✅ |
+| 11 | Polish + Deployment | ✅ |
 
 ---
 

@@ -8,12 +8,17 @@ const config                            = require('./config');
 const { initDb, closeDb }               = require('./db/init');
 const { requestLogger }                 = require('./middleware/requestLogger');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
-const healthRouter                      = require('./routes/health');
-const authRouter                        = require('./routes/auth');
-const articlesRouter                    = require('./routes/articles');
-const categoriesRouter                  = require('./routes/categories');
-const suppliersRouter                   = require('./routes/suppliers');
-const movementsRouter                   = require('./routes/movements');
+const healthRouter        = require('./routes/health');
+const authRouter          = require('./routes/auth');
+const articlesRouter      = require('./routes/articles');
+const categoriesRouter    = require('./routes/categories');
+const suppliersRouter     = require('./routes/suppliers');
+const movementsRouter     = require('./routes/movements');
+const rentalsRouter       = require('./routes/rentals');
+const notificationsRouter = require('./routes/notifications');
+const usersRouter         = require('./routes/users');
+const settingsRouter      = require('./routes/settings');
+const exportRouter        = require('./routes/export');
 
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
 
@@ -33,19 +38,32 @@ function createApp() {
   app.use('/uploads', express.static(path.resolve(config.uploads.dir)));
 
   // ── API Routes ─────────────────────────────────────────────────────────────
-  app.use('/api/health',     healthRouter);
-  app.use('/api/auth',       authRouter);
-  app.use('/api/articles',   articlesRouter);
-  app.use('/api/categories', categoriesRouter);
-  app.use('/api/suppliers',  suppliersRouter);
-  app.use('/api/movements', movementsRouter);
+  app.use('/api/health',        healthRouter);
+  app.use('/api/auth',          authRouter);
+  app.use('/api/articles',      articlesRouter);
+  app.use('/api/categories',    categoriesRouter);
+  app.use('/api/suppliers',     suppliersRouter);
+  app.use('/api/movements',     movementsRouter);
+  app.use('/api/rentals',       rentalsRouter);
+  app.use('/api/notifications', notificationsRouter);
+  app.use('/api/users',         usersRouter);
+  app.use('/api/settings',      settingsRouter);
+  app.use('/api/export',        exportRouter);
 
-  // Phase 5+: rentals, users will be added here
-  // app.use('/api/rentals', rentalsRouter);
-  // app.use('/api/users',   usersRouter);
+  // ── API 404 — must come BEFORE SPA fallback ──────────────────────────────
+  app.use('/api', notFoundHandler);
 
-  // ── Catch-all handlers (must be last) ─────────────────────────────────────
-  app.use(notFoundHandler);
+  // ── Serve built frontend in production ─────────────────────────────────────
+  const publicDir = path.resolve(__dirname, '../public');
+  if (!config.isDev) {
+    app.use(express.static(publicDir));
+    // SPA fallback — Vue Router handles client-side routing
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(publicDir, 'index.html'));
+    });
+  }
+
+  // ── Global error handler (always last) ────────────────────────────────────
   app.use(errorHandler);
 
   return app;
@@ -66,6 +84,9 @@ function start() {
     console.log(`  Server  →  http://localhost:${config.port}`);
     console.log(`  Health  →  http://localhost:${config.port}/api/health`);
     console.log(`  Mode    →  ${config.nodeEnv}`);
+    if (!config.isDev) {
+      console.log(`  UI      →  http://localhost:${config.port}`);
+    }
     console.log('');
   });
 
@@ -77,8 +98,6 @@ function start() {
       console.log('[AVAtar] Bye.');
       process.exit(0);
     });
-
-    // Force exit after 10 s if connections don't drain
     setTimeout(() => {
       console.error('[AVAtar] Forced exit after timeout');
       process.exit(1);
@@ -87,15 +106,8 @@ function start() {
 
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT',  () => shutdown('SIGINT'));
-
-  process.on('uncaughtException', (err) => {
-    console.error('[AVAtar] Uncaught exception:', err);
-    shutdown('uncaughtException');
-  });
-
-  process.on('unhandledRejection', (reason) => {
-    console.error('[AVAtar] Unhandled rejection:', reason);
-  });
+  process.on('uncaughtException',  (err)    => { console.error('[AVAtar] Uncaught exception:', err);    shutdown('uncaughtException'); });
+  process.on('unhandledRejection', (reason) => { console.error('[AVAtar] Unhandled rejection:', reason); });
 }
 
 start();
