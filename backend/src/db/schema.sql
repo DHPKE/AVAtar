@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
   role          TEXT    NOT NULL DEFAULT 'staff'
                         CHECK (role IN ('staff', 'warehouse_manager', 'admin')),
   shortcode     TEXT    UNIQUE,                          -- Kürzel-Login (z.B. "HLD")
+  pin_hash      TEXT,                                     -- bcrypt-Hash des 5-stelligen PIN (Kürzel-Login)
   active        INTEGER NOT NULL DEFAULT 1,
   created_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );

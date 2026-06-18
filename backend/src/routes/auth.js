@@ -65,22 +65,24 @@ router.post('/login', (req, res, next) => {
 // ─── POST /api/auth/login-code ────────────────────────────────────────────────
 
 /**
- * Quick login via Kürzel (short code) — for shared booking stations where
- * staff identify themselves with e.g. "HLD" instead of full credentials.
- * Only works for users that have a shortcode configured by an admin.
- * No password required by design — this is a convenience login for
- * low-risk, fast-turnover scanning stations, not a replacement for
- * password-protected accounts with elevated privileges.
+ * Quick login via Kürzel (short code) + 5-digit PIN — for shared booking
+ * stations where staff identify themselves with e.g. "HLD" + PIN instead
+ * of full credentials. Both factors are required: the Kürzel identifies
+ * the account, the PIN authenticates it (bcrypt-hashed, never stored or
+ * transmitted in plain form beyond this single request).
  *
- * Body: { code }
+ * Body: { code, pin }
  * Returns: { token, user }
  */
 router.post('/login-code', (req, res, next) => {
   try {
-    const { code } = req.body;
+    const { code, pin } = req.body;
 
     if (!code?.trim()) {
       return next(createError(400, 'Kürzel erforderlich'));
+    }
+    if (!pin || !/^[0-9]{5}$/.test(String(pin).trim())) {
+      return next(createError(400, 'PIN muss 5 Ziffern sein'));
     }
 
     const db   = getDb();
@@ -88,8 +90,12 @@ router.post('/login-code', (req, res, next) => {
       'SELECT * FROM users WHERE shortcode = ? AND active = 1'
     ).get(code.trim().toUpperCase());
 
-    if (!user) {
-      return next(createError(401, 'Ungültiges Kürzel'));
+    // Constant-time check even when user/PIN not found (prevent enumeration)
+    const hash    = user?.pin_hash ?? '$2a$12$invalidhashusedfortimingnull';
+    const isValid = bcrypt.compareSync(String(pin).trim(), hash);
+
+    if (!user || !user.pin_hash || !isValid) {
+      return next(createError(401, 'Ungültiges Kürzel oder PIN'));
     }
 
     const token = signToken(user);

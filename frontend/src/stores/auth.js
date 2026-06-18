@@ -48,9 +48,9 @@ export const useAuthStore = defineStore('auth', () => {
     return data.user
   }
 
-  /** Quick login via Kürzel (short code) — for shared booking stations */
-  async function loginCode(code) {
-    const { data } = await api.post('/auth/login-code', { code })
+  /** Quick login via Kürzel (short code) + 5-digit PIN — for shared booking stations */
+  async function loginCode(code, pin) {
+    const { data } = await api.post('/auth/login-code', { code, pin })
     _persist(data.token, data.user)
     return data.user
   }

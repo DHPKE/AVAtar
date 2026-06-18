@@ -39,7 +39,7 @@ function initDb() {
   const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
   db.exec(schema);
 
-  _migrateShortcode();
+  _migrateSchema();
   _seedAdmin();
 
   console.log(`[DB] Ready — ${dbPath}`);
@@ -47,17 +47,26 @@ function initDb() {
 }
 
 /**
- * Adds users.shortcode if missing — supports upgrading databases created
- * before the Kürzel-Login feature existed. SQLite has no
- * "ADD COLUMN IF NOT EXISTS", so we check PRAGMA table_info first.
+ * Generic helper — adds a column if it doesn't already exist.
+ * SQLite has no "ADD COLUMN IF NOT EXISTS", so we check PRAGMA table_info first.
  */
-function _migrateShortcode() {
-  const cols = db.prepare('PRAGMA table_info(users)').all().map(c => c.name);
-  if (!cols.includes('shortcode')) {
-    db.exec('ALTER TABLE users ADD COLUMN shortcode TEXT');
-    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_shortcode ON users(shortcode)');
-    console.log('[DB] Migration: users.shortcode hinzugefügt');
+function _ensureColumn(table, column, definition) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name);
+  if (!cols.includes(column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    console.log(`[DB] Migration: ${table}.${column} hinzugefügt`);
   }
+}
+
+/**
+ * Upgrades databases created before the Kürzel-Login (shortcode) and
+ * PIN-Login features existed. Safe to run on every startup — no-op if
+ * the columns already exist.
+ */
+function _migrateSchema() {
+  _ensureColumn('users', 'shortcode', 'TEXT');
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_shortcode ON users(shortcode)');
+  _ensureColumn('users', 'pin_hash', 'TEXT');
 }
 
 /**

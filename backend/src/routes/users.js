@@ -22,6 +22,15 @@ function normaliseShortcode(raw) {
   return code;
 }
 
+/** Validates a 5-digit PIN; returns the trimmed string or throws */
+function validatePin(raw) {
+  const pin = String(raw ?? '').trim();
+  if (!/^[0-9]{5}$/.test(pin)) {
+    throw Object.assign(new Error('PIN muss genau 5 Ziffern sein'), { status: 400 });
+  }
+  return pin;
+}
+
 // ─── GET /api/users ───────────────────────────────────────────────────────────
 router.get('/', (req, res, next) => {
   try {
@@ -36,7 +45,7 @@ router.get('/', (req, res, next) => {
 // ─── POST /api/users ──────────────────────────────────────────────────────────
 router.post('/', (req, res, next) => {
   try {
-    const { username, email, password, role = 'staff', shortcode } = req.body;
+    const { username, email, password, role = 'staff', shortcode, pin } = req.body;
 
     if (!username?.trim()) return next(createError(400, 'Benutzername erforderlich'));
     if (!email?.trim())    return next(createError(400, 'E-Mail erforderlich'));
@@ -48,15 +57,16 @@ router.post('/', (req, res, next) => {
       return next(createError(400, `Ungültige Rolle. Erlaubt: ${VALID_ROLES.join(', ')}`));
     }
 
-    const code = normaliseShortcode(shortcode);
+    const code    = normaliseShortcode(shortcode);
+    const pinHash = (pin !== undefined && pin !== '') ? bcrypt.hashSync(validatePin(pin), 12) : null;
 
     const db   = getDb();
     const hash = bcrypt.hashSync(password, 12);
 
     const { lastInsertRowid } = db.prepare(`
-      INSERT INTO users (username, email, password_hash, role, shortcode)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(username.trim(), email.trim(), hash, role, code);
+      INSERT INTO users (username, email, password_hash, role, shortcode, pin_hash)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(username.trim(), email.trim(), hash, role, code, pinHash);
 
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(lastInsertRowid);
     res.status(201).json({ user: sanitise(user) });
@@ -94,13 +104,17 @@ router.put('/:id', (req, res, next) => {
 
     const code = shortcode !== undefined ? normaliseShortcode(shortcode) : user.shortcode;
 
+    // Clearing the shortcode invalidates any PIN tied to it
+    const pinHash = (shortcode !== undefined && code === null) ? null : user.pin_hash;
+
     db.prepare(`
-      UPDATE users SET email = ?, role = ?, active = ?, shortcode = ? WHERE id = ?
+      UPDATE users SET email = ?, role = ?, active = ?, shortcode = ?, pin_hash = ? WHERE id = ?
     `).run(
       email  ?? user.email,
       role   ?? user.role,
       active !== undefined ? (active ? 1 : 0) : user.active,
       code,
+      pinHash,
       user.id,
     );
 
@@ -115,6 +129,27 @@ router.put('/:id', (req, res, next) => {
     }
     next(err);
   }
+});
+
+// ─── POST /api/users/:id/set-pin ──────────────────────────────────────────────
+/** Sets or resets the 5-digit PIN used for Kürzel-Login. Requires shortcode. */
+router.post('/:id/set-pin', (req, res, next) => {
+  try {
+    const { pin } = req.body;
+    const validPin = validatePin(pin); // throws 400 if not exactly 5 digits
+
+    const db   = getDb();
+    const user = db.prepare('SELECT id, shortcode FROM users WHERE id = ?').get(req.params.id);
+    if (!user) return next(createError(404, 'Benutzer nicht gefunden'));
+    if (!user.shortcode) {
+      return next(createError(400, 'Benutzer hat kein Kürzel — PIN ohne Kürzel-Login nicht sinnvoll'));
+    }
+
+    const hash = bcrypt.hashSync(validPin, 12);
+    db.prepare('UPDATE users SET pin_hash = ? WHERE id = ?').run(hash, user.id);
+
+    res.json({ message: 'PIN erfolgreich gesetzt' });
+  } catch (err) { next(err); }
 });
 
 // ─── POST /api/users/:id/reset-password ───────────────────────────────────────

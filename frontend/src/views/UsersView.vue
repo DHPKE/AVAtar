@@ -116,6 +116,17 @@
                 <p class="text-xs mt-1" style="color:var(--muted);">2-6 Zeichen — ermöglicht Anmeldung ohne Passwort an Scan-Stationen</p>
               </div>
 
+              <div v-if="!editingId && form.shortcode">
+                <label class="block text-xs font-medium mb-1" style="color:var(--muted);">
+                  PIN <span style="color:var(--muted);">(5 Ziffern — für Kürzel-Login)</span>
+                </label>
+                <input v-model="form.pin" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="5"
+                  placeholder="• • • • •"
+                  class="w-full rounded-lg px-3 text-sm text-center font-mono tracking-widest"
+                  style="height:40px;background:var(--card);border:1px solid var(--border);color:var(--text);outline:none;"
+                  @input="form.pin = form.pin.replace(/[^0-9]/g,'')" />
+              </div>
+
               <div v-if="editingId">
                 <label class="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" v-model="form.active" :disabled="editingId === auth.user?.id" />
@@ -131,6 +142,22 @@
                   <button type="button" class="rounded-lg px-3 text-sm" style="background:var(--card);border:1px solid var(--border);color:var(--text);"
                     :disabled="newPw.length < 8" @click="resetPassword">Setzen</button>
                 </div>
+              </div>
+
+              <div v-if="editingId && form.shortcode">
+                <label class="block text-xs font-medium mb-1" style="color:var(--muted);">
+                  PIN setzen/zurücksetzen <span style="color:var(--muted);">(5 Ziffern — für Kürzel-Login)</span>
+                </label>
+                <div class="flex gap-2">
+                  <input v-model="newPin" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="5"
+                    placeholder="• • • • •"
+                    class="flex-1 rounded-lg px-3 text-sm text-center font-mono tracking-widest"
+                    style="height:40px;background:var(--card);border:1px solid var(--border);color:var(--text);outline:none;"
+                    @input="newPin = newPin.replace(/[^0-9]/g,'')" />
+                  <button type="button" class="rounded-lg px-3 text-sm" style="background:var(--card);border:1px solid var(--border);color:var(--text);"
+                    :disabled="newPin.length !== 5" @click="setPin">Setzen</button>
+                </div>
+                <p class="text-xs mt-1" style="color:var(--muted);">Ohne PIN kann sich der Benutzer nicht per Kürzel anmelden</p>
               </div>
 
               <div v-if="formError" class="rounded-lg px-3 py-2 text-xs" style="background:rgba(239,68,68,.12);color:var(--error);">{{ formError }}</div>
@@ -163,6 +190,7 @@ const saving = ref(false)
 const formError = ref('')
 const formSuccess = ref('')
 const newPw = ref('')
+const newPin = ref('')
 
 const ROLE_META = {
   staff:             { label:'Mitarbeiter',   color:'#E4EDFF', bg:'rgba(228,237,255,.1)'  },
@@ -170,7 +198,7 @@ const ROLE_META = {
   admin:             { label:'Administrator',  color:'#F59E0B', bg:'rgba(245,158,11,.15)' },
 }
 
-const emptyForm = () => ({ username:'', email:'', password:'', role:'staff', active:true, shortcode:'' })
+const emptyForm = () => ({ username:'', email:'', password:'', role:'staff', active:true, shortcode:'', pin:'' })
 const form = ref(emptyForm())
 
 onMounted(async () => {
@@ -178,8 +206,8 @@ onMounted(async () => {
   finally { loading.value = false }
 })
 
-function openCreate() { editingId.value = null; form.value = emptyForm(); formError.value = ''; formSuccess.value = ''; newPw.value = ''; panelOpen.value = true }
-function openEdit(u)  { editingId.value = u.id; form.value = { ...emptyForm(), email:u.email, role:u.role, active:!!u.active, shortcode:u.shortcode||'' }; formError.value = ''; formSuccess.value = ''; newPw.value = ''; panelOpen.value = true }
+function openCreate() { editingId.value = null; form.value = emptyForm(); formError.value = ''; formSuccess.value = ''; newPw.value = ''; newPin.value = ''; panelOpen.value = true }
+function openEdit(u)  { editingId.value = u.id; form.value = { ...emptyForm(), email:u.email, role:u.role, active:!!u.active, shortcode:u.shortcode||'' }; formError.value = ''; formSuccess.value = ''; newPw.value = ''; newPin.value = ''; panelOpen.value = true }
 
 async function save() {
   saving.value = true; formError.value = ''; formSuccess.value = ''
@@ -201,6 +229,15 @@ async function resetPassword() {
     await api.post(`/users/${editingId.value}/reset-password`, { newPassword: newPw.value })
     formSuccess.value = 'Passwort erfolgreich zurückgesetzt'
     newPw.value = ''
+  } catch (err) { formError.value = err.response?.data?.error ?? 'Fehler' }
+}
+
+async function setPin() {
+  formError.value = ''; formSuccess.value = ''
+  try {
+    await api.post(`/users/${editingId.value}/set-pin`, { pin: newPin.value })
+    formSuccess.value = 'PIN erfolgreich gesetzt'
+    newPin.value = ''
   } catch (err) { formError.value = err.response?.data?.error ?? 'Fehler' }
 }
 </script>
