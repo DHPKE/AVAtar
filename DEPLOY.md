@@ -1,5 +1,5 @@
 # AVAtar — Deployment Guide
-> LAN-Server auf Ubuntu 22.04 LTS
+> LAN-Server auf Ubuntu 22.04 LTS · Einzelner Prozess · Kein Internet-Zwang
 
 ---
 
