@@ -10,6 +10,9 @@ const { requestLogger }                 = require('./middleware/requestLogger');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
 const healthRouter                      = require('./routes/health');
 const authRouter                        = require('./routes/auth');
+const articlesRouter                    = require('./routes/articles');
+const categoriesRouter                  = require('./routes/categories');
+const suppliersRouter                   = require('./routes/suppliers');
 
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
 
@@ -29,11 +32,13 @@ function createApp() {
   app.use('/uploads', express.static(path.resolve(config.uploads.dir)));
 
   // ── API Routes ─────────────────────────────────────────────────────────────
-  app.use('/api/health', healthRouter);
-  app.use('/api/auth',   authRouter);
+  app.use('/api/health',     healthRouter);
+  app.use('/api/auth',       authRouter);
+  app.use('/api/articles',   articlesRouter);
+  app.use('/api/categories', categoriesRouter);
+  app.use('/api/suppliers',  suppliersRouter);
 
-  // Phase 3+: articles, movements, rentals, users will be added here
-  // app.use('/api/articles',  articlesRouter);
+  // Phase 4+: movements, rentals, users will be added here
   // app.use('/api/movements', movementsRouter);
   // app.use('/api/rentals',   rentalsRouter);
   // app.use('/api/users',     usersRouter);
