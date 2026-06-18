@@ -29,6 +29,10 @@ function errorHandler(err, req, res, next) { // eslint-disable-line no-unused-va
 
   res.status(status).json({
     error: message,
+    // Additive, optional fields — set by routes like movements/batch to
+    // identify which cart position failed, so the frontend can highlight it
+    ...(err.failedIndex !== undefined ? { failedIndex: err.failedIndex } : {}),
+    ...(err.article_id  !== undefined ? { article_id:  err.article_id  } : {}),
     // Only expose stack trace in development
     ...(config.isDev && err.stack ? { stack: err.stack } : {}),
   });

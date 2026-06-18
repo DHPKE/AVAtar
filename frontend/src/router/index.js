@@ -25,6 +25,12 @@ const routes = [
     component: () => import('@/views/ScanView.vue'),
     meta:      { requiresAuth: true },
   },
+  {
+    path:      '/buchen',
+    name:      'Booking',
+    component: () => import('@/views/BookingView.vue'),
+    meta:      { requiresAuth: true },
+  },
 
   // ── Staff bottom-nav routes ──────────────────────────────────────────────────
   {

@@ -22,6 +22,7 @@
               <th class="text-left py-2 pr-4 font-medium text-xs" style="color:var(--muted);">Benutzername</th>
               <th class="text-left py-2 pr-4 font-medium text-xs hidden md:table-cell" style="color:var(--muted);">E-Mail</th>
               <th class="text-left py-2 pr-4 font-medium text-xs" style="color:var(--muted);">Rolle</th>
+              <th class="text-left py-2 pr-4 font-medium text-xs hidden md:table-cell" style="color:var(--muted);">Kürzel</th>
               <th class="text-left py-2 pr-4 font-medium text-xs hidden lg:table-cell" style="color:var(--muted);">Status</th>
               <th class="text-left py-2 font-medium text-xs hidden lg:table-cell" style="color:var(--muted);">Angelegt</th>
               <th class="py-2"></th>
@@ -42,6 +43,10 @@
                   :style="`background:${ROLE_META[u.role]?.bg};color:${ROLE_META[u.role]?.color};`">
                   {{ ROLE_META[u.role]?.label }}
                 </span>
+              </td>
+              <td class="py-2.5 pr-4 hidden md:table-cell">
+                <span v-if="u.shortcode" class="text-xs font-mono px-2 py-0.5 rounded" style="background:var(--surface);color:var(--accent);">{{ u.shortcode }}</span>
+                <span v-else class="text-xs" style="color:var(--muted);">—</span>
               </td>
               <td class="py-2.5 pr-4 hidden lg:table-cell">
                 <span class="text-xs px-2 py-0.5 rounded"
@@ -100,6 +105,17 @@
                 </select>
               </div>
 
+              <div>
+                <label class="block text-xs font-medium mb-1" style="color:var(--muted);">
+                  Kürzel <span style="color:var(--muted);">(optional — für Schnellanmeldung)</span>
+                </label>
+                <input v-model="form.shortcode" type="text" maxlength="6" placeholder="z.B. HLD"
+                  class="w-full rounded-lg px-3 text-sm uppercase font-mono"
+                  style="height:40px;background:var(--card);border:1px solid var(--border);color:var(--text);outline:none;"
+                  @input="form.shortcode = form.shortcode.toUpperCase()" />
+                <p class="text-xs mt-1" style="color:var(--muted);">2-6 Zeichen — ermöglicht Anmeldung ohne Passwort an Scan-Stationen</p>
+              </div>
+
               <div v-if="editingId">
                 <label class="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" v-model="form.active" :disabled="editingId === auth.user?.id" />
@@ -154,7 +170,7 @@ const ROLE_META = {
   admin:             { label:'Administrator',  color:'#F59E0B', bg:'rgba(245,158,11,.15)' },
 }
 
-const emptyForm = () => ({ username:'', email:'', password:'', role:'staff', active:true })
+const emptyForm = () => ({ username:'', email:'', password:'', role:'staff', active:true, shortcode:'' })
 const form = ref(emptyForm())
 
 onMounted(async () => {
@@ -163,13 +179,13 @@ onMounted(async () => {
 })
 
 function openCreate() { editingId.value = null; form.value = emptyForm(); formError.value = ''; formSuccess.value = ''; newPw.value = ''; panelOpen.value = true }
-function openEdit(u)  { editingId.value = u.id; form.value = { ...emptyForm(), email:u.email, role:u.role, active:!!u.active }; formError.value = ''; formSuccess.value = ''; newPw.value = ''; panelOpen.value = true }
+function openEdit(u)  { editingId.value = u.id; form.value = { ...emptyForm(), email:u.email, role:u.role, active:!!u.active, shortcode:u.shortcode||'' }; formError.value = ''; formSuccess.value = ''; newPw.value = ''; panelOpen.value = true }
 
 async function save() {
   saving.value = true; formError.value = ''; formSuccess.value = ''
   try {
     if (editingId.value) {
-      await api.put(`/users/${editingId.value}`, { email:form.value.email, role:form.value.role, active:form.value.active })
+      await api.put(`/users/${editingId.value}`, { email:form.value.email, role:form.value.role, active:form.value.active, shortcode:form.value.shortcode })
     } else {
       await api.post('/users', form.value)
     }

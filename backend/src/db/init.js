@@ -39,10 +39,25 @@ function initDb() {
   const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
   db.exec(schema);
 
+  _migrateShortcode();
   _seedAdmin();
 
   console.log(`[DB] Ready — ${dbPath}`);
   return db;
+}
+
+/**
+ * Adds users.shortcode if missing — supports upgrading databases created
+ * before the Kürzel-Login feature existed. SQLite has no
+ * "ADD COLUMN IF NOT EXISTS", so we check PRAGMA table_info first.
+ */
+function _migrateShortcode() {
+  const cols = db.prepare('PRAGMA table_info(users)').all().map(c => c.name);
+  if (!cols.includes('shortcode')) {
+    db.exec('ALTER TABLE users ADD COLUMN shortcode TEXT');
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_shortcode ON users(shortcode)');
+    console.log('[DB] Migration: users.shortcode hinzugefügt');
+  }
 }
 
 /**

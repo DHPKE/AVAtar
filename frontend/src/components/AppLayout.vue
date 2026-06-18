@@ -112,6 +112,7 @@ onUnmounted(() => window.removeEventListener('resize', onResize))
 const NAV = [
   { to: '/dashboard',     label: 'Dashboard',     minRole: 'staff'             },
   { to: '/scan',          label: 'Scannen',        minRole: 'staff'             },
+  { to: '/buchen',        label: 'Warenkorb',      minRole: 'staff'             },
   { to: '/artikel',       label: 'Artikel',        minRole: 'staff'             },
   { to: '/verleihe',      label: 'Verleihe',       minRole: 'warehouse_manager' },
   { to: '/kategorien',    label: 'Kategorien',     minRole: 'warehouse_manager' },

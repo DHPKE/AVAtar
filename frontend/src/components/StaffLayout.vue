@@ -15,12 +15,16 @@
         v-for="tab in visibleTabs"
         :key="tab.to"
         :to="tab.to"
-        class="flex-1 flex flex-col items-center justify-center gap-1 transition-colors"
+        class="flex-1 flex flex-col items-center justify-center gap-1 transition-colors relative"
         style="min-height: 64px; -webkit-tap-highlight-color: transparent;"
         :style="isActive(tab.to)
           ? 'color: var(--accent);'
           : 'color: var(--muted);'"
       >
+        <span v-if="tab.badge && cart.count" class="absolute top-1.5 right-1/4 flex items-center justify-center text-xs font-bold rounded-full"
+          style="min-width:16px;height:16px;background:var(--accent);color:#fff;font-size:10px;padding:0 4px;">
+          {{ cart.count }}
+        </span>
         <component :is="tab.icon" class="w-6 h-6" />
         <span class="text-xs font-medium">{{ tab.label }}</span>
       </RouterLink>
@@ -33,8 +37,10 @@
 import { computed, h }  from 'vue'
 import { useRoute }     from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useCartStore } from '@/stores/cart'
 
 const auth  = useAuthStore()
+const cart  = useCartStore()
 const route = useRoute()
 
 // ── Inline SVG icon components ────────────────────────────────────────────────
@@ -72,8 +78,17 @@ const IconAccount = {
   ]),
 }
 
+const IconCart = {
+  render: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, [
+    h('circle', { cx: '9',  cy: '20', r: '1.4' }),
+    h('circle', { cx: '18', cy: '20', r: '1.4' }),
+    h('path', { d: 'M2.5 3h2l2.8 12.4a2 2 0 0 0 2 1.6h7.4a2 2 0 0 0 2-1.6L21 7H6' }),
+  ]),
+}
+
 const TABS = [
   { to: '/scan',         label: 'Scannen',  icon: IconScan,    minRole: 'staff'             },
+  { to: '/buchen',       label: 'Buchen',   icon: IconCart,    minRole: 'staff', badge: true },
   { to: '/verlauf',      label: 'Verlauf',  icon: IconHistory, minRole: 'staff'             },
   { to: '/staff-verleih',label: 'Verleih',  icon: IconRental,  minRole: 'warehouse_manager' },
   { to: '/konto',        label: 'Konto',    icon: IconAccount, minRole: 'staff'             },

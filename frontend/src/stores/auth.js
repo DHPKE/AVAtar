@@ -48,6 +48,13 @@ export const useAuthStore = defineStore('auth', () => {
     return data.user
   }
 
+  /** Quick login via Kürzel (short code) — for shared booking stations */
+  async function loginCode(code) {
+    const { data } = await api.post('/auth/login-code', { code })
+    _persist(data.token, data.user)
+    return data.user
+  }
+
   function logout() {
     _clear()
     // Full page reload clears all component/store state cleanly
@@ -78,6 +85,6 @@ export const useAuthStore = defineStore('auth', () => {
     token, user,
     isAuthenticated, role, roleLabel,
     hasMinRole,
-    login, logout, restoreSession, changePassword,
+    login, loginCode, logout, restoreSession, changePassword,
   }
 })

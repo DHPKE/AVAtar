@@ -62,6 +62,48 @@ router.post('/login', (req, res, next) => {
   }
 });
 
+// ─── POST /api/auth/login-code ────────────────────────────────────────────────
+
+/**
+ * Quick login via Kürzel (short code) — for shared booking stations where
+ * staff identify themselves with e.g. "HLD" instead of full credentials.
+ * Only works for users that have a shortcode configured by an admin.
+ * No password required by design — this is a convenience login for
+ * low-risk, fast-turnover scanning stations, not a replacement for
+ * password-protected accounts with elevated privileges.
+ *
+ * Body: { code }
+ * Returns: { token, user }
+ */
+router.post('/login-code', (req, res, next) => {
+  try {
+    const { code } = req.body;
+
+    if (!code?.trim()) {
+      return next(createError(400, 'Kürzel erforderlich'));
+    }
+
+    const db   = getDb();
+    const user = db.prepare(
+      'SELECT * FROM users WHERE shortcode = ? AND active = 1'
+    ).get(code.trim().toUpperCase());
+
+    if (!user) {
+      return next(createError(401, 'Ungültiges Kürzel'));
+    }
+
+    const token = signToken(user);
+
+    res.json({
+      token,
+      expiresIn: config.jwt.expiresIn,
+      user: sanitiseUser(user),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ─── GET /api/auth/me ─────────────────────────────────────────────────────────
 
 /**

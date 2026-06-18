@@ -12,6 +12,16 @@ function sanitise(user) {
   return safe;
 }
 
+/** Normalises and validates a shortcode: 2-6 chars, letters/digits only */
+function normaliseShortcode(raw) {
+  if (raw === undefined || raw === null || raw === '') return null;
+  const code = String(raw).trim().toUpperCase();
+  if (!/^[A-Z0-9]{2,6}$/.test(code)) {
+    throw Object.assign(new Error('Kürzel muss 2-6 Buchstaben/Zahlen sein'), { status: 400 });
+  }
+  return code;
+}
+
 // ─── GET /api/users ───────────────────────────────────────────────────────────
 router.get('/', (req, res, next) => {
   try {
@@ -26,7 +36,7 @@ router.get('/', (req, res, next) => {
 // ─── POST /api/users ──────────────────────────────────────────────────────────
 router.post('/', (req, res, next) => {
   try {
-    const { username, email, password, role = 'staff' } = req.body;
+    const { username, email, password, role = 'staff', shortcode } = req.body;
 
     if (!username?.trim()) return next(createError(400, 'Benutzername erforderlich'));
     if (!email?.trim())    return next(createError(400, 'E-Mail erforderlich'));
@@ -38,13 +48,15 @@ router.post('/', (req, res, next) => {
       return next(createError(400, `Ungültige Rolle. Erlaubt: ${VALID_ROLES.join(', ')}`));
     }
 
+    const code = normaliseShortcode(shortcode);
+
     const db   = getDb();
     const hash = bcrypt.hashSync(password, 12);
 
     const { lastInsertRowid } = db.prepare(`
-      INSERT INTO users (username, email, password_hash, role)
-      VALUES (?, ?, ?, ?)
-    `).run(username.trim(), email.trim(), hash, role);
+      INSERT INTO users (username, email, password_hash, role, shortcode)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(username.trim(), email.trim(), hash, role, code);
 
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(lastInsertRowid);
     res.status(201).json({ user: sanitise(user) });
@@ -54,6 +66,9 @@ router.post('/', (req, res, next) => {
     }
     if (err.message?.includes('UNIQUE constraint failed: users.email')) {
       return next(createError(409, 'E-Mail bereits vergeben'));
+    }
+    if (err.message?.includes('UNIQUE constraint failed') && err.message?.includes('shortcode')) {
+      return next(createError(409, 'Kürzel bereits vergeben'));
     }
     next(err);
   }
@@ -66,7 +81,7 @@ router.put('/:id', (req, res, next) => {
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
     if (!user) return next(createError(404, 'Benutzer nicht gefunden'));
 
-    const { email, role, active } = req.body;
+    const { email, role, active, shortcode } = req.body;
     const VALID_ROLES = ['staff', 'warehouse_manager', 'admin'];
     if (role && !VALID_ROLES.includes(role)) {
       return next(createError(400, `Ungültige Rolle. Erlaubt: ${VALID_ROLES.join(', ')}`));
@@ -77,12 +92,15 @@ router.put('/:id', (req, res, next) => {
       return next(createError(400, 'Eigenen Account nicht deaktivierbar'));
     }
 
+    const code = shortcode !== undefined ? normaliseShortcode(shortcode) : user.shortcode;
+
     db.prepare(`
-      UPDATE users SET email = ?, role = ?, active = ? WHERE id = ?
+      UPDATE users SET email = ?, role = ?, active = ?, shortcode = ? WHERE id = ?
     `).run(
       email  ?? user.email,
       role   ?? user.role,
       active !== undefined ? (active ? 1 : 0) : user.active,
+      code,
       user.id,
     );
 
@@ -91,6 +109,9 @@ router.put('/:id', (req, res, next) => {
   } catch (err) {
     if (err.message?.includes('UNIQUE constraint failed: users.email')) {
       return next(createError(409, 'E-Mail bereits vergeben'));
+    }
+    if (err.message?.includes('UNIQUE constraint failed') && err.message?.includes('shortcode')) {
+      return next(createError(409, 'Kürzel bereits vergeben'));
     }
     next(err);
   }

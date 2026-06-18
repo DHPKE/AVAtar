@@ -11,14 +11,35 @@
         <p class="text-sm mt-1" style="color: var(--muted);">Lagerverwaltung</p>
       </div>
 
+      <!-- Mode toggle -->
+      <div class="flex rounded-lg p-1 mb-4" style="background: var(--surface); border: 1px solid var(--border);">
+        <button
+          class="flex-1 py-2 rounded-md text-sm font-medium transition-colors"
+          :style="mode === 'password'
+            ? 'background: var(--card); color: var(--text);'
+            : 'color: var(--muted);'"
+          @click="switchMode('password')"
+        >
+          Anmelden
+        </button>
+        <button
+          class="flex-1 py-2 rounded-md text-sm font-medium transition-colors"
+          :style="mode === 'code'
+            ? 'background: var(--card); color: var(--text);'
+            : 'color: var(--muted);'"
+          @click="switchMode('code')"
+        >
+          Kürzel
+        </button>
+      </div>
+
       <!-- Card -->
       <div
         class="rounded-xl p-6"
         style="background: var(--card); border: 1px solid var(--border);"
       >
-        <form @submit.prevent="handleLogin" novalidate>
-
-          <!-- Username -->
+        <!-- ── Password login ─────────────────────────────────────────────────── -->
+        <form v-if="mode === 'password'" @submit.prevent="handleLogin" novalidate>
           <div class="mb-4">
             <label class="block text-xs mb-1.5 font-medium" style="color: var(--muted);">
               Benutzername
@@ -30,19 +51,13 @@
               autofocus
               placeholder="Benutzername eingeben"
               class="w-full px-3 py-2.5 rounded-lg text-sm transition-colors"
-              style="
-                background: var(--surface);
-                border: 1px solid var(--border);
-                color: var(--text);
-                outline: none;
-              "
+              style="background: var(--surface); border: 1px solid var(--border); color: var(--text); outline: none;"
               :disabled="loading"
               @focus="e => e.target.style.borderColor = 'var(--accent)'"
               @blur="e => e.target.style.borderColor  = 'var(--border)'"
             />
           </div>
 
-          <!-- Password -->
           <div class="mb-5">
             <label class="block text-xs mb-1.5 font-medium" style="color: var(--muted);">
               Passwort
@@ -53,28 +68,17 @@
               autocomplete="current-password"
               placeholder="Passwort eingeben"
               class="w-full px-3 py-2.5 rounded-lg text-sm transition-colors"
-              style="
-                background: var(--surface);
-                border: 1px solid var(--border);
-                color: var(--text);
-                outline: none;
-              "
+              style="background: var(--surface); border: 1px solid var(--border); color: var(--text); outline: none;"
               :disabled="loading"
               @focus="e => e.target.style.borderColor = 'var(--accent)'"
               @blur="e => e.target.style.borderColor  = 'var(--border)'"
             />
           </div>
 
-          <!-- Error message -->
-          <div
-            v-if="error"
-            class="mb-4 px-3 py-2 rounded-lg text-sm"
-            style="background: rgba(239,68,68,.1); color: var(--error);"
-          >
+          <div v-if="error" class="mb-4 px-3 py-2 rounded-lg text-sm" style="background: rgba(239,68,68,.1); color: var(--error);">
             {{ error }}
           </div>
 
-          <!-- Submit -->
           <button
             type="submit"
             class="w-full py-2.5 rounded-lg text-sm font-medium transition-opacity"
@@ -84,7 +88,51 @@
           >
             {{ loading ? 'Anmelden…' : 'Anmelden' }}
           </button>
+        </form>
 
+        <!-- ── Kürzel (shortcode) login — large touch-friendly input ──────────── -->
+        <form v-else @submit.prevent="handleCodeLogin" novalidate>
+          <div class="mb-5">
+            <label class="block text-xs mb-2 font-medium text-center" style="color: var(--muted);">
+              Kürzel eingeben
+            </label>
+            <input
+              ref="codeInput"
+              v-model="code"
+              type="text"
+              inputmode="text"
+              autocomplete="off"
+              autocorrect="off"
+              autocapitalize="characters"
+              spellcheck="false"
+              maxlength="6"
+              placeholder="HLD"
+              class="w-full text-center text-3xl font-bold tracking-widest uppercase rounded-xl px-4 transition-colors"
+              style="height: 72px; background: var(--surface); border: 2px solid var(--border); color: var(--accent); outline: none;"
+              :disabled="loading"
+              @input="code = code.toUpperCase()"
+              @focus="e => e.target.style.borderColor = 'var(--accent)'"
+              @blur="e => e.target.style.borderColor  = 'var(--border)'"
+            />
+          </div>
+
+          <div v-if="error" class="mb-4 px-3 py-2 rounded-lg text-sm text-center" style="background: rgba(239,68,68,.1); color: var(--error);">
+            {{ error }}
+          </div>
+
+          <button
+            type="submit"
+            class="w-full rounded-xl text-lg font-semibold transition-opacity active:opacity-80"
+            style="height: 60px; background: var(--accent); color: #fff;"
+            :style="(loading || code.length < 2) ? 'opacity: .5; cursor: not-allowed;' : ''"
+            :disabled="loading || code.length < 2"
+          >
+            {{ loading ? 'Anmelden…' : 'Anmelden' }}
+          </button>
+
+          <p class="text-xs text-center mt-3" style="color: var(--muted);">
+            Schnellanmeldung für Lager-Scanstationen
+          </p>
         </form>
       </div>
 
@@ -93,16 +141,26 @@
 </template>
 
 <script setup>
-import { ref }         from 'vue'
+import { ref, nextTick, watch } from 'vue'
 import { useRouter }   from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 const router   = useRouter()
 const auth     = useAuthStore()
+
+const mode     = ref('password')
 const username = ref('')
 const password = ref('')
+const code     = ref('')
 const loading  = ref(false)
 const error    = ref('')
+const codeInput = ref(null)
+
+function switchMode(next) {
+  mode.value  = next
+  error.value = ''
+  if (next === 'code') nextTick(() => codeInput.value?.focus())
+}
 
 async function handleLogin() {
   if (!username.value.trim() || !password.value) return
@@ -110,10 +168,26 @@ async function handleLogin() {
   error.value   = ''
   try {
     await auth.login(username.value.trim(), password.value)
-    router.push('/dashboard')
+    router.push('/')
   } catch (err) {
     error.value = err.response?.data?.error ?? 'Anmeldung fehlgeschlagen'
     password.value = ''
+  } finally {
+    loading.value = false
+  }
+}
+
+async function handleCodeLogin() {
+  if (code.value.trim().length < 2) return
+  loading.value = true
+  error.value   = ''
+  try {
+    await auth.loginCode(code.value.trim())
+    router.push('/')
+  } catch (err) {
+    error.value = err.response?.data?.error ?? 'Ungültiges Kürzel'
+    code.value = ''
+    nextTick(() => codeInput.value?.focus())
   } finally {
     loading.value = false
   }

@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT    NOT NULL,
   role          TEXT    NOT NULL DEFAULT 'staff'
                         CHECK (role IN ('staff', 'warehouse_manager', 'admin')),
+  shortcode     TEXT    UNIQUE,                          -- Kürzel-Login (z.B. "HLD")
   active        INTEGER NOT NULL DEFAULT 1,
   created_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );

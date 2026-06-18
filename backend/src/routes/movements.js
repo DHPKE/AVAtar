@@ -221,4 +221,145 @@ router.post('/', (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ─── POST /api/movements/batch  — Warenkorb-Buchung ───────────────────────────
+/**
+ * Books an entire cart of pending bookings in a single atomic transaction.
+ * Used by the "Artikel buchen" cart workflow: scan multiple articles,
+ * queue them with quantities, then commit all at once. If any single item
+ * fails (e.g. insufficient stock), the WHOLE batch rolls back — nothing is
+ * partially booked — and the response identifies which item failed so the
+ * frontend can highlight it for correction.
+ *
+ * Body:
+ *   items: [
+ *     { article_id, type: 'in'|'out'|'correction', qty?, meters?, reference? },
+ *     ...
+ *   ]
+ *
+ * Returns: { booked: number, results: [{ movement_id, article_id, article_name, type, stock }] }
+ */
+router.post('/batch', (req, res, next) => {
+  try {
+    const { items } = req.body;
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return next(createError(400, 'Warenkorb ist leer'));
+    }
+    if (items.length > 200) {
+      return next(createError(400, 'Maximal 200 Positionen pro Buchung'));
+    }
+
+    const db      = getDb();
+    const results = [];
+
+    const run = db.transaction(() => {
+      items.forEach((item, index) => {
+        const pos = index + 1; // human-readable position number
+        const { article_id, type, qty = 0, meters = 0, reference } = item;
+
+        if (!article_id || !type) {
+          throw Object.assign(
+            new Error(`Position ${pos}: article_id und type erforderlich`),
+            { status: 400, failedIndex: index }
+          );
+        }
+        if (!MANUAL_TYPES.includes(type)) {
+          throw Object.assign(
+            new Error(`Position ${pos}: ungültiger Typ`),
+            { status: 400, failedIndex: index }
+          );
+        }
+
+        const article = db.prepare(
+          'SELECT * FROM articles WHERE id = ? AND active = 1'
+        ).get(article_id);
+
+        if (!article) {
+          throw Object.assign(
+            new Error(`Position ${pos}: Artikel nicht gefunden`),
+            { status: 404, failedIndex: index }
+          );
+        }
+
+        const isCable = article.unit === 'meter';
+        const amount  = isCable ? parseFloat(meters) : parseInt(qty, 10);
+
+        if (isNaN(amount) || amount < 0) {
+          throw Object.assign(
+            new Error(`Position ${pos} (${article.name}): ungültige Menge`),
+            { status: 400, failedIndex: index, article_id: article.id }
+          );
+        }
+        if (type !== 'correction' && amount === 0) {
+          throw Object.assign(
+            new Error(`Position ${pos} (${article.name}): Menge darf nicht 0 sein`),
+            { status: 400, failedIndex: index, article_id: article.id }
+          );
+        }
+
+        let newQty    = article.stock_qty;
+        let newMeters = article.stock_meters;
+
+        if (isCable) {
+          if (type === 'in') {
+            newMeters = article.stock_meters + amount;
+          } else if (type === 'out') {
+            if (article.stock_meters < amount) {
+              throw Object.assign(
+                new Error(`Position ${pos} (${article.name}): nicht genug Bestand — verfügbar ${article.stock_meters} m`),
+                { status: 409, failedIndex: index, article_id: article.id }
+              );
+            }
+            newMeters = article.stock_meters - amount;
+          } else {
+            newMeters = amount; // correction: absolute value
+          }
+          db.prepare('UPDATE articles SET stock_meters = ? WHERE id = ?').run(newMeters, article.id);
+        } else {
+          if (type === 'in') {
+            newQty = article.stock_qty + amount;
+          } else if (type === 'out') {
+            if (article.stock_qty < amount) {
+              throw Object.assign(
+                new Error(`Position ${pos} (${article.name}): nicht genug Bestand — verfügbar ${article.stock_qty} Stk`),
+                { status: 409, failedIndex: index, article_id: article.id }
+              );
+            }
+            newQty = article.stock_qty - amount;
+          } else {
+            newQty = amount; // correction: absolute value
+          }
+          db.prepare('UPDATE articles SET stock_qty = ? WHERE id = ?').run(newQty, article.id);
+        }
+
+        const { lastInsertRowid } = db.prepare(`
+          INSERT INTO movements (article_id, type, qty, meters, user_id, reference)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(
+          article.id,
+          type,
+          isCable ? 0      : amount,
+          isCable ? amount : 0,
+          req.user.sub,
+          reference?.trim() || null,
+        );
+
+        results.push({
+          movement_id:  lastInsertRowid,
+          article_id:   article.id,
+          article_name: article.name,
+          type,
+          stock: { qty: newQty, meters: newMeters },
+        });
+      });
+    });
+
+    run();
+
+    res.status(201).json({ booked: results.length, results });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
