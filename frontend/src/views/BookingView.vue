@@ -54,18 +54,18 @@
           </button>
         </div>
 
-        <!-- Quantity stepper -->
+        <!-- Quantity entry — numpad-driven, Enter adds to cart -->
         <div class="flex items-center justify-center gap-3 mb-3">
           <button class="rounded-lg font-bold text-xl active:opacity-70 flex items-center justify-center"
             style="width:48px;height:48px;background:var(--surface);border:1px solid var(--border);color:var(--text);"
-            @click="decrementPending">−</button>
+            @click="adjustPending(-1)">−</button>
           <div class="flex-1 text-center">
             <span class="text-3xl font-bold" style="color:var(--text);">{{ pendingDisplayAmount }}</span>
             <span class="text-sm ml-1" style="color:var(--muted);">{{ pendingArticle.unit === 'meter' ? 'm' : 'Stk' }}</span>
           </div>
           <button class="rounded-lg font-bold text-xl active:opacity-70 flex items-center justify-center"
             style="width:48px;height:48px;background:var(--surface);border:1px solid var(--border);color:var(--text);"
-            @click="incrementPending">+</button>
+            @click="adjustPending(1)">+</button>
         </div>
 
         <!-- Reference -->
@@ -73,11 +73,13 @@
           class="w-full rounded-lg px-3 text-sm mb-3"
           style="height:44px;background:var(--surface);border:1px solid var(--border);color:var(--text);outline:none;" />
 
-        <button class="w-full rounded-lg font-semibold text-sm"
-          style="height:48px;background:var(--accent);color:#fff;"
-          @click="addPendingToCart">
-          Zum Warenkorb hinzufügen
-        </button>
+        <OnScreenNumpad
+          :allow-decimal="pendingArticle.unit === 'meter'"
+          enter-label="Zum Warenkorb hinzufügen"
+          @digit="appendPendingDigit"
+          @backspace="pendingBackspace"
+          @enter="addPendingToCart"
+        />
       </div>
 
       <!-- ── Cart ──────────────────────────────────────────────────────────────── -->
@@ -180,13 +182,15 @@
 
 <script setup>
 import { ref, computed, nextTick, onMounted } from 'vue'
-import AppLayout   from '@/components/AppLayout.vue'
-import StaffLayout from '@/components/StaffLayout.vue'
+import AppLayout      from '@/components/AppLayout.vue'
+import StaffLayout    from '@/components/StaffLayout.vue'
+import OnScreenNumpad from '@/components/OnScreenNumpad.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useCartStore } from '@/stores/cart'
 import { useBarcodeScanner } from '@/composables/useBarcodeScanner.js'
 import api from '@/api/axios'
 import { fmtStock } from '@/utils/labels.js'
+import { appendDigit, backspace as bufferBackspace, parseAmount, toBuffer } from '@/utils/numpadBuffer.js'
 
 const auth   = useAuthStore()
 const cart   = useCartStore()
@@ -196,11 +200,11 @@ const barcode        = ref('')
 const barcodeInput    = ref(null)
 const searching       = ref(false)
 const scanError       = ref('')
-const pendingArticle  = ref(null)
-const pendingType     = ref('out')
-const pendingQty      = ref(1)
-const pendingMeters   = ref(1.0)
-const pendingReference = ref('')
+const pendingArticle      = ref(null)
+const pendingType         = ref('out')
+const pendingAmountBuffer  = ref('1')
+const pendingAmountTouched = ref(false)
+const pendingReference    = ref('')
 const booking         = ref(false)
 const bookError       = ref('')
 const showSuccess     = ref(false)
@@ -215,7 +219,7 @@ const { isScanning } = useBarcodeScanner(barcodeInput, (code) => {
 }, { active: scanActive })
 
 const pendingDisplayAmount = computed(() =>
-  pendingArticle.value?.unit === 'meter' ? pendingMeters.value : pendingQty.value
+  pendingAmountBuffer.value === '' ? '0' : pendingAmountBuffer.value
 )
 
 async function doSearch() {
@@ -225,11 +229,11 @@ async function doSearch() {
   scanError.value  = ''
   try {
     const { data } = await api.get(`/articles/barcode/${encodeURIComponent(q)}`)
-    pendingArticle.value   = data
-    pendingType.value      = 'out'
-    pendingQty.value       = 1
-    pendingMeters.value    = 1.0
-    pendingReference.value = ''
+    pendingArticle.value    = data
+    pendingType.value       = 'out'
+    pendingAmountBuffer.value  = '1'
+    pendingAmountTouched.value = false
+    pendingReference.value  = ''
     barcode.value = ''
   } catch (err) {
     scanError.value = err.response?.data?.error ?? 'Artikel nicht gefunden'
@@ -240,18 +244,38 @@ async function doSearch() {
   }
 }
 
-function incrementPending() {
-  if (pendingArticle.value?.unit === 'meter') pendingMeters.value = Math.round((pendingMeters.value + 0.5) * 10) / 10
-  else pendingQty.value++
+/** Numpad digit press — first press replaces the default '1' instead of appending to it */
+function appendPendingDigit(d) {
+  if (!pendingAmountTouched.value) {
+    pendingAmountBuffer.value  = ''
+    pendingAmountTouched.value = true
+  }
+  pendingAmountBuffer.value = appendDigit(pendingAmountBuffer.value, d, {
+    allowDecimal: pendingArticle.value?.unit === 'meter',
+    maxLength: 6,
+  })
 }
-function decrementPending() {
-  if (pendingArticle.value?.unit === 'meter') { if (pendingMeters.value > 0.5) pendingMeters.value = Math.round((pendingMeters.value - 0.5) * 10) / 10 }
-  else { if (pendingQty.value > 1) pendingQty.value-- }
+
+function pendingBackspace() {
+  pendingAmountTouched.value = true
+  pendingAmountBuffer.value  = bufferBackspace(pendingAmountBuffer.value)
+}
+
+/** +/- quick-adjust buttons next to the display */
+function adjustPending(delta) {
+  pendingAmountTouched.value = true
+  const isCable = pendingArticle.value?.unit === 'meter'
+  const step    = isCable ? 0.5 : 1
+  const min     = isCable ? 0.5 : 1
+  const current = parseAmount(pendingAmountBuffer.value)
+  const next    = Math.max(min, current + delta * step)
+  pendingAmountBuffer.value = toBuffer(isCable ? Math.round(next * 10) / 10 : next)
 }
 
 function addPendingToCart() {
   if (!pendingArticle.value) return
-  const amount = pendingArticle.value.unit === 'meter' ? pendingMeters.value : pendingQty.value
+  const amount = parseAmount(pendingAmountBuffer.value)
+  if (amount <= 0) return
   cart.addItem(pendingArticle.value, pendingType.value, amount, pendingReference.value)
   pendingArticle.value = null
   nextTick(() => barcodeInput.value?.focus())

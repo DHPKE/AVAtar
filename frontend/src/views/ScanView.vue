@@ -116,32 +116,33 @@
             @blur="e  => e.target.style.borderColor='var(--border)'" />
         </div>
 
-        <!-- Quantity stepper -->
-        <div v-if="selectedAction !== 'rental_out'" class="flex items-center justify-center gap-4 mb-5">
-          <button class="rounded-xl font-bold text-2xl active:opacity-70 flex items-center justify-center"
-            style="width:64px;height:64px;background:var(--card);border:2px solid var(--border);color:var(--text);"
-            @click="decrement">−</button>
-          <div class="flex-1 text-center">
-            <span class="text-5xl font-bold" style="color:var(--text);">{{ displayQty }}</span>
-            <span class="text-lg ml-1" style="color:var(--muted);">{{ article.unit === 'meter' ? 'm' : 'Stk' }}</span>
+        <!-- Quantity entry — numpad-driven, Enter books immediately -->
+        <div v-if="selectedAction !== 'rental_out'" class="mb-5">
+          <div class="flex items-center justify-center gap-3 mb-3">
+            <button class="rounded-lg font-bold text-xl active:opacity-70 flex items-center justify-center"
+              style="width:48px;height:48px;background:var(--card);border:1px solid var(--border);color:var(--text);"
+              @click="adjustAmount(-1)">−</button>
+            <div class="flex-1 text-center">
+              <span class="text-5xl font-bold" style="color:var(--text);">{{ displayQty }}</span>
+              <span class="text-lg ml-1" style="color:var(--muted);">{{ article.unit === 'meter' ? 'm' : 'Stk' }}</span>
+            </div>
+            <button class="rounded-lg font-bold text-xl active:opacity-70 flex items-center justify-center"
+              style="width:48px;height:48px;background:var(--card);border:1px solid var(--border);color:var(--text);"
+              @click="adjustAmount(1)">+</button>
           </div>
-          <button class="rounded-xl font-bold text-2xl active:opacity-70 flex items-center justify-center"
-            style="width:64px;height:64px;background:var(--card);border:2px solid var(--border);color:var(--text);"
-            @click="increment">+</button>
-        </div>
 
-        <!-- Meter direct input -->
-        <div v-if="article.unit === 'meter'" class="mb-4 flex items-center gap-2">
-          <input v-model.number="meters" type="number" step="0.5" min="0.5"
-            class="flex-1 rounded-xl px-4 text-center text-xl font-bold"
-            style="height:56px;background:var(--card);border:2px solid var(--border);color:var(--text);outline:none;"
-            @focus="e => e.target.style.borderColor='var(--accent)'"
-            @blur="e  => e.target.style.borderColor='var(--border)'" />
-          <span style="color:var(--muted);">Meter</span>
+          <OnScreenNumpad
+            :allow-decimal="article.unit === 'meter'"
+            :enter-label="state === 'submitting' ? 'Wird gebucht…' : `${actionLabel} BESTÄTIGEN`"
+            :enter-disabled="!canConfirm"
+            @digit="appendAmountDigit"
+            @backspace="amountBackspace"
+            @enter="doConfirm"
+          />
         </div>
 
         <!-- Reference -->
-        <div class="mb-5">
+        <div class="mb-5 mt-1">
           <p class="text-sm font-medium mb-2" style="color:var(--muted);">Referenz (optional)</p>
           <input v-model="reference" type="text" placeholder="Projektnr., Auftragsnr."
             class="w-full rounded-xl px-4 text-base"
@@ -150,8 +151,9 @@
             @blur="e  => e.target.style.borderColor='var(--border)'" />
         </div>
 
-        <!-- Confirm -->
+        <!-- Confirm — rental_out only (no amount entry, so no numpad Enter to use) -->
         <button
+          v-if="selectedAction === 'rental_out'"
           class="w-full rounded-xl font-bold text-lg tracking-wide transition-opacity active:opacity-80"
           style="height:64px;color:#fff;"
           :style="`background:${actionColor};${!canConfirm ? 'opacity:.4;' : ''}`"
@@ -194,11 +196,13 @@
 
 <script setup>
 import { ref, computed, nextTick, onMounted } from 'vue'
-import AppLayout   from '@/components/AppLayout.vue'
-import StaffLayout from '@/components/StaffLayout.vue'
+import AppLayout      from '@/components/AppLayout.vue'
+import StaffLayout    from '@/components/StaffLayout.vue'
+import OnScreenNumpad from '@/components/OnScreenNumpad.vue'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/api/axios'
 import { useBarcodeScanner } from '@/composables/useBarcodeScanner.js'
+import { appendDigit, backspace as bufferBackspace, parseAmount, toBuffer } from '@/utils/numpadBuffer.js'
 
 const auth   = useAuthStore()
 const layout = computed(() => auth.hasMinRole('warehouse_manager') ? AppLayout : StaffLayout)
@@ -207,8 +211,8 @@ const state          = ref('idle')
 const barcode        = ref('')
 const article        = ref(null)
 const selectedAction = ref(null)
-const qty            = ref(1)
-const meters         = ref(1.0)
+const amountBuffer   = ref('1')   // string buffer driving the on-screen numpad
+const amountTouched  = ref(false) // becomes true on first digit press — clears the '1' default
 const reference      = ref('')
 const rentedTo       = ref('')
 const selectedSerial = ref(null)
@@ -227,12 +231,12 @@ const stockColor       = computed(() => {
 const ACTION_META = { in: { label:'EINGANG', color:'#22C55E' }, out: { label:'AUSGANG', color:'#EF4444' }, rental_out: { label:'VERLEIHEN', color:'#14B8A6' } }
 const actionLabel  = computed(() => ACTION_META[selectedAction.value]?.label ?? '')
 const actionColor  = computed(() => ACTION_META[selectedAction.value]?.color ?? 'var(--accent)')
-const displayQty   = computed(() => article.value?.unit === 'meter' ? meters.value : qty.value)
+const displayQty   = computed(() => amountBuffer.value === '' ? '0' : amountBuffer.value)
 
 const canConfirm = computed(() => {
   if (state.value === 'submitting') return false
   if (selectedAction.value === 'rental_out') return !!selectedSerial.value && rentedTo.value.trim().length > 0
-  return article.value?.unit === 'meter' ? meters.value > 0 : qty.value > 0
+  return parseAmount(amountBuffer.value) > 0
 })
 
 function typeLabel(t) { return { consumable:'Verbrauch', bundle:'Gebinde', equipment:'Gerät', rental:'Verleih', cable:'Kabel' }[t] ?? t }
@@ -252,28 +256,57 @@ async function doSearch() {
 }
 
 function selectAction(action) {
-  selectedAction.value = action; qty.value = 1; meters.value = 1.0
+  selectedAction.value = action
+  amountBuffer.value   = '1'
+  amountTouched.value  = false
   rentedTo.value = ''; selectedSerial.value = availableSerials.value[0] ?? null
   errorMsg.value = ''; state.value = 'quantity'
 }
 
-function increment() { article.value?.unit === 'meter' ? (meters.value = Math.round((meters.value + 0.5)*10)/10) : qty.value++ }
-function decrement() { article.value?.unit === 'meter' ? (meters.value > 0.5 && (meters.value = Math.round((meters.value - 0.5)*10)/10)) : (qty.value > 1 && qty.value--) }
+/** Numpad digit press — first press replaces the default '1' instead of appending to it */
+function appendAmountDigit(d) {
+  if (!amountTouched.value) {
+    amountBuffer.value  = ''
+    amountTouched.value = true
+  }
+  amountBuffer.value = appendDigit(amountBuffer.value, d, {
+    allowDecimal: article.value?.unit === 'meter',
+    maxLength: 6,
+  })
+}
+
+function amountBackspace() {
+  amountTouched.value = true
+  amountBuffer.value  = bufferBackspace(amountBuffer.value)
+}
+
+/** +/- quick-adjust buttons next to the display */
+function adjustAmount(delta) {
+  amountTouched.value = true
+  const isCable = article.value?.unit === 'meter'
+  const step    = isCable ? 0.5 : 1
+  const min     = isCable ? 0.5 : 1
+  const current = parseAmount(amountBuffer.value)
+  const next    = Math.max(min, current + delta * step)
+  amountBuffer.value = toBuffer(isCable ? Math.round(next * 10) / 10 : next)
+}
 
 async function doConfirm() {
+  if (!canConfirm.value) return
   state.value = 'submitting'; errorMsg.value = ''
   try {
     if (selectedAction.value === 'rental_out') {
       await api.post('/rentals', { serial_number_id: selectedSerial.value.id, rented_to: rentedTo.value.trim() })
       successMsg.value = `${article.value.name} verliehen an ${rentedTo.value.trim()}`
     } else {
+      const amount = parseAmount(amountBuffer.value)
       await api.post('/movements', {
         article_id: article.value.id, type: selectedAction.value,
-        qty: article.value.unit !== 'meter' ? qty.value : 0,
-        meters: article.value.unit === 'meter' ? meters.value : 0,
+        qty: article.value.unit !== 'meter' ? amount : 0,
+        meters: article.value.unit === 'meter' ? amount : 0,
         reference: reference.value.trim() || undefined,
       })
-      const amt = article.value.unit === 'meter' ? `${meters.value} m` : `${qty.value} Stk`
+      const amt = article.value.unit === 'meter' ? `${amount} m` : `${amount} Stk`
       successMsg.value = `${article.value.name} · ${actionLabel.value} ${amt}`
     }
     state.value = 'success'
@@ -284,11 +317,9 @@ async function doConfirm() {
 }
 
 function reset() {
-  Object.assign({ state, barcode, article, selectedAction, errorMsg, successMsg, reference, rentedTo, selectedSerial },
-    { state: 'idle', barcode: '', article: null, selectedAction: null, errorMsg: '', successMsg: '', reference: '', rentedTo: '', selectedSerial: null })
   state.value = 'idle'; barcode.value = ''; article.value = null; selectedAction.value = null
   errorMsg.value = ''; successMsg.value = ''; reference.value = ''; rentedTo.value = ''; selectedSerial.value = null
-  qty.value = 1; meters.value = 1.0
+  amountBuffer.value = '1'; amountTouched.value = false
   nextTick(() => barcodeInput.value?.focus())
 }
 

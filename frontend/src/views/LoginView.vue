@@ -3,7 +3,7 @@
     class="min-h-screen flex items-center justify-center px-4"
     style="background: var(--bg);"
   >
-    <div class="w-full max-w-xs">
+    <div class="w-full transition-all" :class="mode === 'code' ? 'max-w-sm' : 'max-w-xs'">
 
       <!-- Brand -->
       <div class="text-center mb-8">
@@ -90,54 +90,37 @@
           </button>
         </form>
 
-        <!-- ── Kürzel (shortcode) + PIN login — large touch-friendly inputs ────── -->
-        <form v-else @submit.prevent="handleCodeLogin" novalidate>
-          <div class="mb-4">
+        <!-- ── Kürzel (shortcode) + PIN login — on-screen keyboard/numpad ──────── -->
+        <div v-else>
+          <div class="mb-3">
             <label class="block text-xs mb-2 font-medium text-center" style="color: var(--muted);">
               Kürzel
             </label>
             <input
-              ref="codeInput"
-              v-model="code"
+              :value="code"
               type="text"
-              inputmode="text"
-              autocomplete="off"
-              autocorrect="off"
-              autocapitalize="characters"
-              spellcheck="false"
-              maxlength="6"
+              readonly
               placeholder="HLD"
-              class="w-full text-center text-3xl font-bold tracking-widest uppercase rounded-xl px-4 transition-colors"
-              style="height: 64px; background: var(--surface); border: 2px solid var(--border); color: var(--accent); outline: none;"
-              :disabled="loading"
-              @input="code = code.toUpperCase()"
-              @keydown.enter.prevent="focusPin"
-              @focus="e => e.target.style.borderColor = 'var(--accent)'"
-              @blur="e => e.target.style.borderColor  = 'var(--border)'"
+              class="w-full text-center text-3xl font-bold tracking-widest uppercase rounded-xl px-4 transition-colors cursor-pointer"
+              style="height: 60px; background: var(--surface); outline: none;"
+              :style="activeField === 'code' ? 'border:2px solid var(--accent); color: var(--accent);' : 'border:2px solid var(--border); color: var(--accent);'"
+              @click="activeField = 'code'"
             />
           </div>
 
-          <div class="mb-5">
+          <div class="mb-4">
             <label class="block text-xs mb-2 font-medium text-center" style="color: var(--muted);">
               PIN
             </label>
             <input
-              ref="pinInput"
-              v-model="pin"
-              type="password"
-              inputmode="numeric"
-              pattern="[0-9]*"
-              autocomplete="off"
-              spellcheck="false"
-              maxlength="5"
+              :value="'•'.repeat(pin.length)"
+              type="text"
+              readonly
               placeholder="• • • • •"
-              class="w-full text-center text-3xl font-bold tracking-[0.4em] rounded-xl px-4 transition-colors"
-              style="height: 64px; background: var(--surface); border: 2px solid var(--border); color: var(--text); outline: none;"
-              :disabled="loading"
-              @input="pin = pin.replace(/[^0-9]/g, '')"
-              @keydown.enter="handleCodeLogin"
-              @focus="e => e.target.style.borderColor = 'var(--accent)'"
-              @blur="e => e.target.style.borderColor  = 'var(--border)'"
+              class="w-full text-center text-3xl font-bold tracking-[0.4em] rounded-xl px-4 transition-colors cursor-pointer"
+              style="height: 60px; background: var(--surface); color: var(--text); outline: none;"
+              :style="activeField === 'pin' ? 'border:2px solid var(--accent);' : 'border:2px solid var(--border);'"
+              @click="activeField = 'pin'"
             />
           </div>
 
@@ -145,20 +128,32 @@
             {{ error }}
           </div>
 
-          <button
-            type="submit"
-            class="w-full rounded-xl text-lg font-semibold transition-opacity active:opacity-80"
-            style="height: 60px; background: var(--accent); color: #fff;"
-            :style="!canSubmitCode ? 'opacity: .5; cursor: not-allowed;' : ''"
-            :disabled="!canSubmitCode"
-          >
-            {{ loading ? 'Anmelden…' : 'Anmelden' }}
-          </button>
+          <!-- ── On-screen keyboard (Kürzel) ───────────────────────────────────── -->
+          <OnScreenKeyboard
+            v-if="activeField === 'code'"
+            enter-label="Weiter"
+            :enter-disabled="code.trim().length < 2"
+            @key="appendCodeChar"
+            @backspace="code = code.slice(0, -1)"
+            @clear="code = ''"
+            @enter="activeField = 'pin'"
+          />
+
+          <!-- ── On-screen numpad (PIN) ────────────────────────────────────────── -->
+          <OnScreenNumpad
+            v-else
+            :allow-decimal="false"
+            :enter-label="loading ? 'Anmelden…' : 'Anmelden'"
+            :enter-disabled="!canSubmitCode"
+            @digit="appendPinDigit"
+            @backspace="pin = pin.slice(0, -1)"
+            @enter="handleCodeLogin"
+          />
 
           <p class="text-xs text-center mt-3" style="color: var(--muted);">
             Schnellanmeldung für Lager-Scanstationen
           </p>
-        </form>
+        </div>
       </div>
 
     </div>
@@ -166,37 +161,42 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter }   from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import OnScreenKeyboard from '@/components/OnScreenKeyboard.vue'
+import OnScreenNumpad   from '@/components/OnScreenNumpad.vue'
 
 const router   = useRouter()
 const auth     = useAuthStore()
 
-const mode      = ref('password')
-const username  = ref('')
-const password  = ref('')
-const code      = ref('')
-const pin       = ref('')
-const loading   = ref(false)
-const error     = ref('')
-const codeInput = ref(null)
-const pinInput  = ref(null)
+const mode        = ref('password')
+const username    = ref('')
+const password    = ref('')
+const code        = ref('')
+const pin         = ref('')
+const loading     = ref(false)
+const error       = ref('')
+const activeField = ref('code') // 'code' | 'pin' — which on-screen panel is shown
 
 const canSubmitCode = computed(() =>
   !loading.value && code.value.trim().length >= 2 && pin.value.length === 5
 )
 
 function switchMode(next) {
-  mode.value  = next
-  error.value = ''
-  code.value  = ''
-  pin.value   = ''
-  if (next === 'code') nextTick(() => codeInput.value?.focus())
+  mode.value        = next
+  error.value       = ''
+  code.value        = ''
+  pin.value         = ''
+  activeField.value = 'code'
 }
 
-function focusPin() {
-  if (code.value.trim().length >= 2) nextTick(() => pinInput.value?.focus())
+function appendCodeChar(ch) {
+  if (code.value.length < 6) code.value += ch
+}
+
+function appendPinDigit(d) {
+  if (pin.value.length < 5) pin.value += d
 }
 
 async function handleLogin() {
@@ -223,8 +223,8 @@ async function handleCodeLogin() {
     router.push('/')
   } catch (err) {
     error.value = err.response?.data?.error ?? 'Ungültiges Kürzel oder PIN'
-    pin.value = ''
-    nextTick(() => pinInput.value?.focus())
+    pin.value         = ''
+    activeField.value = 'pin'
   } finally {
     loading.value = false
   }
