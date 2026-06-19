@@ -1,4 +1,5 @@
 const router = require('express').Router();
+const crypto = require('crypto');
 const { getDb }           = require('../db/init');
 const { authenticate }    = require('../middleware/authenticate');
 const { requireMinRole }  = require('../middleware/requireRole');
@@ -8,7 +9,7 @@ router.use(authenticate);
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-// rental_out / rental_in are created exclusively by the rentals API (Phase 5)
+// rental_out / rental_in are created exclusively by the rentals API
 const MANUAL_TYPES = ['in', 'out', 'correction'];
 
 /** Full movement SELECT — joins article + user for rich responses */
@@ -23,6 +24,109 @@ const MOVEMENT_SELECT = `
   JOIN articles a ON m.article_id  = a.id
   JOIN users    u ON m.user_id     = u.id
 `;
+
+/** Fetch the Sammelartikel component list (component article rows + qty-per-unit) */
+function getComponents(db, parentArticleId) {
+  return db.prepare(`
+    SELECT ac.qty AS qty_per_unit, a.*
+    FROM article_components ac
+    JOIN articles a ON a.id = ac.component_article_id
+    WHERE ac.parent_article_id = ?
+  `).all(parentArticleId);
+}
+
+/**
+ * Applies one stock movement to a single article row (in the same way for
+ * the Sammelartikel itself and for each of its components) and inserts the
+ * corresponding movements row. Must be called inside a db.transaction().
+ * Throws (with .status) on insufficient stock.
+ */
+function applyMovement(db, { article, type, amount, userId, reference, groupRef, label }) {
+  const isCable = article.unit === 'meter';
+  let newQty    = article.stock_qty;
+  let newMeters = article.stock_meters;
+
+  if (isCable) {
+    if (type === 'in')           newMeters = article.stock_meters + amount;
+    else if (type === 'out') {
+      if (article.stock_meters < amount) {
+        throw Object.assign(
+          new Error(`${label ? label + ': ' : ''}nicht genug Bestand — verfügbar: ${article.stock_meters} m`),
+          { status: 409 }
+        );
+      }
+      newMeters = article.stock_meters - amount;
+    } else newMeters = amount; // correction: absolute value
+    db.prepare('UPDATE articles SET stock_meters = ? WHERE id = ?').run(newMeters, article.id);
+  } else {
+    if (type === 'in')           newQty = article.stock_qty + amount;
+    else if (type === 'out') {
+      if (article.stock_qty < amount) {
+        throw Object.assign(
+          new Error(`${label ? label + ': ' : ''}nicht genug Bestand — verfügbar: ${article.stock_qty} Stk`),
+          { status: 409 }
+        );
+      }
+      newQty = article.stock_qty - amount;
+    } else newQty = amount; // correction: absolute value
+    db.prepare('UPDATE articles SET stock_qty = ? WHERE id = ?').run(newQty, article.id);
+  }
+
+  const { lastInsertRowid } = db.prepare(`
+    INSERT INTO movements (article_id, type, qty, meters, user_id, reference, group_ref)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    article.id,
+    type,
+    isCable ? 0      : amount,
+    isCable ? amount : 0,
+    userId,
+    reference || null,
+    groupRef  || null,
+  );
+
+  return { movementId: lastInsertRowid, qty: newQty, meters: newMeters };
+}
+
+/**
+ * Books one line item: if the article is a Sammelartikel, this also books
+ * the same `type` for every component (amount × Stückzahl pro Einheit),
+ * all inside the SAME transaction the caller already holds — so either
+ * everything books, or nothing does. Returns { main, components: [...] }.
+ */
+function bookArticleCascading(db, { article, type, amount, userId, reference }) {
+  const groupRef = article.type === 'sammelartikel'
+    ? `SET-${article.id}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`
+    : null;
+
+  const main = applyMovement(db, {
+    article, type, amount, userId, reference, groupRef,
+    label: article.name,
+  });
+
+  const componentResults = [];
+  if (article.type === 'sammelartikel') {
+    const components = getComponents(db, article.id);
+    for (const comp of components) {
+      const compIsCable  = comp.unit === 'meter';
+      const compAmount   = type === 'correction'
+        ? amount * comp.qty_per_unit            // correction sets an absolute multiple, best-effort
+        : amount * comp.qty_per_unit;
+      const result = applyMovement(db, {
+        article:   comp,
+        type,
+        amount:    compIsCable ? compAmount : Math.round(compAmount),
+        userId,
+        reference: reference ? `${reference} (Sammelartikel: ${article.name})` : `Sammelartikel: ${article.name}`,
+        groupRef,
+        label: comp.name,
+      });
+      componentResults.push({ article_id: comp.id, article_name: comp.name, ...result });
+    }
+  }
+
+  return { main, components: componentResults, groupRef };
+}
 
 // ─── GET /api/movements ───────────────────────────────────────────────────────
 /**
@@ -42,22 +146,10 @@ router.get('/', (req, res, next) => {
     const conds  = [];
     const params = [];
 
-    if (article_id) {
-      conds.push('m.article_id = ?');
-      params.push(Number(article_id));
-    }
-    if (type) {
-      conds.push('m.type = ?');
-      params.push(type);
-    }
-    if (from) {
-      conds.push('m.created_at >= ?');
-      params.push(from);
-    }
-    if (to) {
-      conds.push('m.created_at <= ?');
-      params.push(to);
-    }
+    if (article_id) { conds.push('m.article_id = ?'); params.push(Number(article_id)); }
+    if (type)       { conds.push('m.type = ?');       params.push(type); }
+    if (from)       { conds.push('m.created_at >= ?'); params.push(from); }
+    if (to)         { conds.push('m.created_at <= ?'); params.push(to); }
 
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
     const lim   = Math.min(Number(limit) || 50, 200);
@@ -80,7 +172,9 @@ router.get('/', (req, res, next) => {
 router.get('/article/:articleId', (req, res, next) => {
   try {
     const db      = getDb();
-    const article = db.prepare('SELECT id, name, article_number, unit, stock_qty, stock_meters FROM articles WHERE id = ?').get(req.params.articleId);
+    const article = db.prepare(
+      'SELECT id, name, article_number, unit, stock_qty, stock_meters FROM articles WHERE id = ?'
+    ).get(req.params.articleId);
     if (!article) return next(createError(404, 'Artikel nicht gefunden'));
 
     const { limit = '100', offset = '0' } = req.query;
@@ -101,16 +195,18 @@ router.get('/article/:articleId', (req, res, next) => {
 
 // ─── POST /api/movements ──────────────────────────────────────────────────────
 /**
- * Creates a movement and atomically updates article stock.
+ * Creates a movement and atomically updates article stock. If the article
+ * is a Sammelartikel, this also books the same type for every component
+ * (proportionally to the booked amount) in the same transaction.
  *
  * Body:
  *   article_id  {number}  required
  *   type        {string}  'in' | 'out' | 'correction'
- *   qty         {number}  for piece / bundle articles
+ *   qty         {number}  for piece / bundle / sammelartikel articles
  *   meters      {number}  for cable articles
  *   reference   {string}  project/order number (optional)
  *
- * Returns: { movement, stock: { qty, meters } }
+ * Returns: { movement, stock: { qty, meters }, components: [...] }
  */
 router.post('/', (req, res, next) => {
   try {
@@ -149,74 +245,27 @@ router.post('/', (req, res, next) => {
       return next(createError(400, 'Menge darf nicht 0 sein'));
     }
 
-    // ── Atomic transaction ────────────────────────────────────────────────────
-    let movementId;
-    let newQty    = article.stock_qty;
-    let newMeters = article.stock_meters;
+    // ── Atomic transaction (incl. Sammelartikel components) ───────────────────
+    let bookingResult;
 
     const run = db.transaction(() => {
-      if (isCable) {
-        if (type === 'in') {
-          newMeters = article.stock_meters + amount;
-        } else if (type === 'out') {
-          if (article.stock_meters < amount) {
-            throw Object.assign(
-              new Error(`Nicht genug Bestand — verfügbar: ${article.stock_meters} m`),
-              { status: 409 }
-            );
-          }
-          newMeters = article.stock_meters - amount;
-        } else {
-          // correction: set absolute value
-          newMeters = amount;
-        }
-        db.prepare('UPDATE articles SET stock_meters = ? WHERE id = ?')
-          .run(newMeters, article.id);
-      } else {
-        if (type === 'in') {
-          newQty = article.stock_qty + amount;
-        } else if (type === 'out') {
-          if (article.stock_qty < amount) {
-            throw Object.assign(
-              new Error(`Nicht genug Bestand — verfügbar: ${article.stock_qty} Stk`),
-              { status: 409 }
-            );
-          }
-          newQty = article.stock_qty - amount;
-        } else {
-          // correction: set absolute value
-          newQty = amount;
-        }
-        db.prepare('UPDATE articles SET stock_qty = ? WHERE id = ?')
-          .run(newQty, article.id);
-      }
-
-      // Record the movement
-      const { lastInsertRowid } = db.prepare(`
-        INSERT INTO movements
-          (article_id, type, qty, meters, user_id, reference)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(
-        article.id,
-        type,
-        isCable ? 0       : amount,
-        isCable ? amount  : 0,
-        req.user.sub,
-        reference?.trim() || null,
-      );
-
-      movementId = lastInsertRowid;
+      bookingResult = bookArticleCascading(db, {
+        article, type, amount,
+        userId:    req.user.sub,
+        reference: reference?.trim() || null,
+      });
     });
 
     run();
 
     const movement = db.prepare(
       `${MOVEMENT_SELECT} WHERE m.id = ?`
-    ).get(movementId);
+    ).get(bookingResult.main.movementId);
 
     res.status(201).json({
       movement,
-      stock: { qty: newQty, meters: newMeters },
+      stock:      { qty: bookingResult.main.qty, meters: bookingResult.main.meters },
+      components: bookingResult.components,
     });
   } catch (err) { next(err); }
 });
@@ -228,7 +277,8 @@ router.post('/', (req, res, next) => {
  * queue them with quantities, then commit all at once. If any single item
  * fails (e.g. insufficient stock), the WHOLE batch rolls back — nothing is
  * partially booked — and the response identifies which item failed so the
- * frontend can highlight it for correction.
+ * frontend can highlight it for correction. Sammelartikel positions also
+ * cascade their components within this same transaction.
  *
  * Body:
  *   items: [
@@ -236,7 +286,7 @@ router.post('/', (req, res, next) => {
  *     ...
  *   ]
  *
- * Returns: { booked: number, results: [{ movement_id, article_id, article_name, type, stock }] }
+ * Returns: { booked: number, results: [{ movement_id, article_id, article_name, type, stock, components }] }
  */
 router.post('/batch', (req, res, next) => {
   try {
@@ -297,59 +347,28 @@ router.post('/batch', (req, res, next) => {
           );
         }
 
-        let newQty    = article.stock_qty;
-        let newMeters = article.stock_meters;
-
-        if (isCable) {
-          if (type === 'in') {
-            newMeters = article.stock_meters + amount;
-          } else if (type === 'out') {
-            if (article.stock_meters < amount) {
-              throw Object.assign(
-                new Error(`Position ${pos} (${article.name}): nicht genug Bestand — verfügbar ${article.stock_meters} m`),
-                { status: 409, failedIndex: index, article_id: article.id }
-              );
-            }
-            newMeters = article.stock_meters - amount;
-          } else {
-            newMeters = amount; // correction: absolute value
-          }
-          db.prepare('UPDATE articles SET stock_meters = ? WHERE id = ?').run(newMeters, article.id);
-        } else {
-          if (type === 'in') {
-            newQty = article.stock_qty + amount;
-          } else if (type === 'out') {
-            if (article.stock_qty < amount) {
-              throw Object.assign(
-                new Error(`Position ${pos} (${article.name}): nicht genug Bestand — verfügbar ${article.stock_qty} Stk`),
-                { status: 409, failedIndex: index, article_id: article.id }
-              );
-            }
-            newQty = article.stock_qty - amount;
-          } else {
-            newQty = amount; // correction: absolute value
-          }
-          db.prepare('UPDATE articles SET stock_qty = ? WHERE id = ?').run(newQty, article.id);
+        let bookingResult;
+        try {
+          bookingResult = bookArticleCascading(db, {
+            article, type, amount,
+            userId:    req.user.sub,
+            reference: reference?.trim() || null,
+          });
+        } catch (innerErr) {
+          // Re-throw with position context so the frontend can highlight this item
+          throw Object.assign(
+            new Error(`Position ${pos} (${article.name}): ${innerErr.message}`),
+            { status: innerErr.status || 409, failedIndex: index, article_id: article.id }
+          );
         }
 
-        const { lastInsertRowid } = db.prepare(`
-          INSERT INTO movements (article_id, type, qty, meters, user_id, reference)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(
-          article.id,
-          type,
-          isCable ? 0      : amount,
-          isCable ? amount : 0,
-          req.user.sub,
-          reference?.trim() || null,
-        );
-
         results.push({
-          movement_id:  lastInsertRowid,
+          movement_id:  bookingResult.main.movementId,
           article_id:   article.id,
           article_name: article.name,
           type,
-          stock: { qty: newQty, meters: newMeters },
+          stock:        { qty: bookingResult.main.qty, meters: bookingResult.main.meters },
+          components:   bookingResult.components,
         });
       });
     });

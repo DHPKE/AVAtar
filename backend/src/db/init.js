@@ -40,6 +40,7 @@ function initDb() {
   db.exec(schema);
 
   _migrateSchema();
+  _migrateArticlesTypeCheck();
   _seedAdmin();
 
   console.log(`[DB] Ready — ${dbPath}`);
@@ -59,14 +60,116 @@ function _ensureColumn(table, column, definition) {
 }
 
 /**
- * Upgrades databases created before the Kürzel-Login (shortcode) and
- * PIN-Login features existed. Safe to run on every startup — no-op if
- * the columns already exist.
+ * Upgrades databases created before various features existed.
+ * Safe to run on every startup — no-op if columns already exist.
  */
 function _migrateSchema() {
+  // Kürzel-Login / PIN-Login
   _ensureColumn('users', 'shortcode', 'TEXT');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_shortcode ON users(shortcode)');
   _ensureColumn('users', 'pin_hash', 'TEXT');
+
+  // Benutzer: Abteilung
+  _ensureColumn('users', 'department', 'TEXT');
+
+  // Lieferanten: erweiterte Adress-/Konditionsfelder
+  _ensureColumn('suppliers', 'street',      'TEXT');
+  _ensureColumn('suppliers', 'postal_code', 'TEXT');
+  _ensureColumn('suppliers', 'city',        'TEXT');
+  _ensureColumn('suppliers', 'country',     'TEXT');
+  _ensureColumn('suppliers', 'conditions',  'TEXT');
+
+  // Artikel: Gruppe + aufgesplitteter Lagerort
+  _ensureColumn('articles', 'group_id',       'INTEGER REFERENCES groups(id) ON DELETE SET NULL');
+  _ensureColumn('articles', 'location_row',   'TEXT');
+  _ensureColumn('articles', 'location_shelf', 'TEXT');
+  _ensureColumn('articles', 'location_bin',   'TEXT');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_articles_group_id ON articles(group_id)');
+
+  // Lagerbewegungen: Verknüpfung zusammengehöriger Buchungen (Sammelartikel)
+  _ensureColumn('movements', 'group_ref', 'TEXT');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_movements_group_ref ON movements(group_ref)');
+}
+
+/**
+ * SQLite cannot ALTER a CHECK constraint in place. To allow the new
+ * 'sammelartikel' article type on databases created before it existed,
+ * we rebuild the articles table (standard SQLite 12-step procedure)
+ * if the stored CREATE TABLE statement doesn't already mention it.
+ * No-op (and safe) on fresh installs, since schema.sql already includes it.
+ */
+function _migrateArticlesTypeCheck() {
+  const row = db.prepare(
+    `SELECT sql FROM sqlite_master WHERE type='table' AND name='articles'`
+  ).get();
+  if (!row || row.sql.includes('sammelartikel')) return; // already up to date
+
+  console.log('[DB] Migration: articles.type CHECK wird erweitert (sammelartikel)…');
+
+  db.pragma('foreign_keys = OFF');
+  const run = db.transaction(() => {
+    db.exec(`
+      CREATE TABLE articles_migrate_new (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        article_number TEXT    NOT NULL UNIQUE,
+        barcode        TEXT    UNIQUE,
+        name           TEXT    NOT NULL,
+        description    TEXT,
+        type           TEXT    NOT NULL
+                               CHECK (type IN ('consumable','bundle','equipment','rental','cable','sammelartikel')),
+        category_id    INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+        group_id       INTEGER REFERENCES groups(id)     ON DELETE SET NULL,
+        supplier_id    INTEGER REFERENCES suppliers(id)  ON DELETE SET NULL,
+        purchase_price REAL,
+        stock_qty      INTEGER NOT NULL DEFAULT 0,
+        stock_meters   REAL    NOT NULL DEFAULT 0,
+        min_stock      REAL    NOT NULL DEFAULT 0,
+        bundle_size    INTEGER,
+        unit           TEXT    NOT NULL DEFAULT 'piece'
+                               CHECK (unit IN ('piece','meter','bundle')),
+        location       TEXT,
+        location_row   TEXT,
+        location_shelf TEXT,
+        location_bin   TEXT,
+        image_path     TEXT,
+        active         INTEGER NOT NULL DEFAULT 1,
+        created_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+        updated_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+      );
+
+      INSERT INTO articles_migrate_new
+        (id, article_number, barcode, name, description, type,
+         category_id, group_id, supplier_id, purchase_price,
+         stock_qty, stock_meters, min_stock, bundle_size, unit,
+         location, location_row, location_shelf, location_bin,
+         image_path, active, created_at, updated_at)
+      SELECT
+        id, article_number, barcode, name, description, type,
+        category_id, group_id, supplier_id, purchase_price,
+        stock_qty, stock_meters, min_stock, bundle_size, unit,
+        location, location_row, location_shelf, location_bin,
+        image_path, active, created_at, updated_at
+      FROM articles;
+
+      DROP TABLE articles;
+      ALTER TABLE articles_migrate_new RENAME TO articles;
+
+      CREATE TRIGGER IF NOT EXISTS trg_articles_updated_at
+      AFTER UPDATE ON articles
+      BEGIN
+        UPDATE articles SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = NEW.id;
+      END;
+
+      CREATE INDEX IF NOT EXISTS idx_articles_barcode  ON articles(barcode);
+      CREATE INDEX IF NOT EXISTS idx_articles_type     ON articles(type);
+      CREATE INDEX IF NOT EXISTS idx_articles_active   ON articles(active);
+      CREATE INDEX IF NOT EXISTS idx_articles_group_id ON articles(group_id);
+    `);
+  });
+  run();
+  db.pragma('foreign_keys = ON');
+
+  console.log('[DB] Migration abgeschlossen — Sammelartikel verfügbar.');
 }
 
 /**

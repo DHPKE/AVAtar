@@ -12,6 +12,7 @@ const healthRouter        = require('./routes/health');
 const authRouter          = require('./routes/auth');
 const articlesRouter      = require('./routes/articles');
 const categoriesRouter    = require('./routes/categories');
+const groupsRouter        = require('./routes/groups');
 const suppliersRouter     = require('./routes/suppliers');
 const movementsRouter     = require('./routes/movements');
 const rentalsRouter       = require('./routes/rentals');
@@ -42,6 +43,7 @@ function createApp() {
   app.use('/api/auth',          authRouter);
   app.use('/api/articles',      articlesRouter);
   app.use('/api/categories',    categoriesRouter);
+  app.use('/api/groups',        groupsRouter);
   app.use('/api/suppliers',     suppliersRouter);
   app.use('/api/movements',     movementsRouter);
   app.use('/api/rentals',       rentalsRouter);
@@ -98,16 +100,10 @@ function start() {
       console.log('[AVAtar] Bye.');
       process.exit(0);
     });
-    setTimeout(() => {
-      console.error('[AVAtar] Forced exit after timeout');
-      process.exit(1);
-    }, 10_000).unref();
   }
 
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT',  () => shutdown('SIGINT'));
-  process.on('uncaughtException',  (err)    => { console.error('[AVAtar] Uncaught exception:', err);    shutdown('uncaughtException'); });
-  process.on('unhandledRejection', (reason) => { console.error('[AVAtar] Unhandled rejection:', reason); });
 }
 
 start();

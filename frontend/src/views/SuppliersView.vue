@@ -20,6 +20,8 @@
               <th class="text-left py-2 pr-4 font-medium text-xs hidden md:table-cell" style="color:var(--muted);">Ansprechpartner</th>
               <th class="text-left py-2 pr-4 font-medium text-xs hidden lg:table-cell" style="color:var(--muted);">E-Mail</th>
               <th class="text-left py-2 pr-4 font-medium text-xs hidden xl:table-cell" style="color:var(--muted);">Telefon</th>
+              <th class="text-left py-2 pr-4 font-medium text-xs hidden xl:table-cell" style="color:var(--muted);">Ort</th>
+              <th class="text-left py-2 font-medium text-xs hidden xl:table-cell" style="color:var(--muted);">Land</th>
               <th class="py-2"></th>
             </tr>
           </thead>
@@ -32,6 +34,10 @@
               <td class="py-2.5 pr-4 text-xs hidden md:table-cell" style="color:var(--muted);">{{ s.contact_person || '—' }}</td>
               <td class="py-2.5 pr-4 text-xs hidden lg:table-cell" style="color:var(--muted);">{{ s.email || '—' }}</td>
               <td class="py-2.5 pr-4 text-xs hidden xl:table-cell" style="color:var(--muted);">{{ s.phone || '—' }}</td>
+              <td class="py-2.5 pr-4 text-xs hidden xl:table-cell" style="color:var(--muted);">
+                {{ [s.postal_code, s.city].filter(Boolean).join(' ') || '—' }}
+              </td>
+              <td class="py-2.5 text-xs hidden xl:table-cell" style="color:var(--muted);">{{ s.country || '—' }}</td>
               <td class="py-2.5 flex items-center gap-2 justify-end">
                 <button class="text-xs px-2 py-1 rounded" style="background:var(--card);border:1px solid var(--border);color:var(--text);" @click="openEdit(s)">Bearbeiten</button>
                 <button class="text-xs px-2 py-1 rounded" style="background:rgba(239,68,68,.12);color:var(--error);" @click="del(s)">Löschen</button>
@@ -50,7 +56,7 @@
             <h2 class="font-semibold" style="color:var(--text);">{{ editingId ? 'Lieferant bearbeiten' : 'Neuer Lieferant' }}</h2>
             <button style="color:var(--muted);font-size:1.25rem;" @click="panelOpen=false">×</button>
           </div>
-          <div class="px-5 py-4 flex flex-col gap-4">
+          <div class="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4">
             <div v-for="f in fields" :key="f.key">
               <label class="block text-xs font-medium mb-1" style="color:var(--muted);">{{ f.label }}<span v-if="f.req" style="color:var(--error);"> *</span></label>
               <input v-model="form[f.key]" :type="f.type||'text'" class="w-full rounded-lg px-3 text-sm"
@@ -80,14 +86,22 @@ const saving    = ref(false)
 const formError = ref('')
 
 const fields = [
-  { key:'name',           label:'Firmenname',     req:true },
+  { key:'name',           label:'Firmenname',      req:true },
   { key:'contact_person', label:'Ansprechpartner' },
   { key:'email',          label:'E-Mail',          type:'email' },
   { key:'phone',          label:'Telefon',         type:'tel'   },
+  { key:'street',         label:'Straße'           },
+  { key:'postal_code',    label:'PLZ'              },
+  { key:'city',           label:'Ort'              },
+  { key:'country',        label:'Land'             },
+  { key:'conditions',     label:'Konditionen'      },
   { key:'notes',          label:'Notizen'          },
 ]
 
-const emptyForm = () => ({ name:'', contact_person:'', email:'', phone:'', notes:'' })
+const emptyForm = () => ({
+  name:'', contact_person:'', email:'', phone:'',
+  street:'', postal_code:'', city:'', country:'', conditions:'', notes:'',
+})
 const form = ref(emptyForm())
 
 onMounted(async () => {

@@ -84,6 +84,12 @@ const routes = [
     meta:      { requiresAuth: true, minRole: 'warehouse_manager' },
   },
   {
+    path:      '/gruppen',
+    name:      'Groups',
+    component: () => import('@/views/GroupsView.vue'),
+    meta:      { requiresAuth: true, minRole: 'warehouse_manager' },
+  },
+  {
     path:      '/lieferanten',
     name:      'Suppliers',
     component: () => import('@/views/SuppliersView.vue'),

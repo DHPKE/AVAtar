@@ -87,11 +87,11 @@ const IconCart = {
 }
 
 const TABS = [
-  { to: '/scan',         label: 'Scannen',  icon: IconScan,    minRole: 'staff'             },
-  { to: '/buchen',       label: 'Buchen',   icon: IconCart,    minRole: 'staff', badge: true },
-  { to: '/verlauf',      label: 'Verlauf',  icon: IconHistory, minRole: 'staff'             },
-  { to: '/staff-verleih',label: 'Verleih',  icon: IconRental,  minRole: 'warehouse_manager' },
-  { to: '/konto',        label: 'Konto',    icon: IconAccount, minRole: 'staff'             },
+  { to: '/scan',          label: 'Scannen',        icon: IconScan,    minRole: 'staff'             },
+  { to: '/buchen',        label: 'Buchen',         icon: IconCart,    minRole: 'staff', badge: true },
+  { to: '/verlauf',       label: 'Verlauf',        icon: IconHistory, minRole: 'staff'             },
+  { to: '/staff-verleih', label: 'Geräteverleih',  icon: IconRental,  minRole: 'warehouse_manager' },
+  { to: '/konto',         label: 'Konto',          icon: IconAccount, minRole: 'staff'             },
 ]
 
 const visibleTabs = computed(() =>

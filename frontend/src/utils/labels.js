@@ -1,10 +1,11 @@
 // ─── Article types ────────────────────────────────────────────────────────────
 export const TYPE_META = {
-  consumable: { label: 'Verbrauch', color: '#A855F7', bg: 'rgba(168,85,247,.15)'  },
-  bundle:     { label: 'Gebinde',   color: '#F97316', bg: 'rgba(249,115,22,.15)'  },
-  equipment:  { label: 'Gerät',     color: '#008FD0', bg: 'rgba(0,143,208,.15)'   },
-  rental:     { label: 'Verleih',   color: '#14B8A6', bg: 'rgba(20,184,166,.15)'  },
-  cable:      { label: 'Kabel',     color: '#EAB308', bg: 'rgba(234,179,8,.15)'   },
+  consumable:    { label: 'Verbrauch',     color: '#A855F7', bg: 'rgba(168,85,247,.15)'  },
+  bundle:        { label: 'Gebinde',       color: '#F97316', bg: 'rgba(249,115,22,.15)'  },
+  equipment:     { label: 'Gerät',         color: '#008FD0', bg: 'rgba(0,143,208,.15)'   },
+  rental:        { label: 'Verleih',       color: '#14B8A6', bg: 'rgba(20,184,166,.15)'  },
+  cable:         { label: 'Kabel',         color: '#EAB308', bg: 'rgba(234,179,8,.15)'   },
+  sammelartikel: { label: 'Sammelartikel', color: '#22C55E', bg: 'rgba(34,197,94,.15)'   },
 }
 
 export const MOVEMENT_META = {
@@ -15,8 +16,8 @@ export const MOVEMENT_META = {
   correction: { label: 'Korrektur', color: '#F59E0B', bg: 'rgba(245,158,11,.15)' },
 }
 
-export const VALID_TYPES  = ['consumable', 'bundle', 'equipment', 'rental', 'cable']
-export const VALID_UNITS  = { consumable: 'piece', bundle: 'bundle', equipment: 'piece', rental: 'piece', cable: 'meter' }
+export const VALID_TYPES  = ['consumable', 'bundle', 'equipment', 'rental', 'cable', 'sammelartikel']
+export const VALID_UNITS  = { consumable: 'piece', bundle: 'bundle', equipment: 'piece', rental: 'piece', cable: 'meter', sammelartikel: 'piece' }
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
 export function fmtDate(iso) {
@@ -41,6 +42,18 @@ export function isLowStock(article) {
   return article.unit === 'meter'
     ? article.stock_meters <= article.min_stock
     : article.stock_qty    <= article.min_stock
+}
+
+/** Combines the three optional Lagerort fields into one display string (e.g. "R2 / Reg.A / F3") */
+export function fmtLocation(article) {
+  if (!article) return '—'
+  const parts = [
+    article.location_row   ? `Reihe ${article.location_row}`   : null,
+    article.location_shelf ? `Regal ${article.location_shelf}` : null,
+    article.location_bin   ? `Fach ${article.location_bin}`    : null,
+  ].filter(Boolean)
+  if (parts.length) return parts.join(' / ')
+  return article.location || '—' // Fallback auf alten Freitext-Lagerort
 }
 
 // ─── Days helper for chart ────────────────────────────────────────────────────

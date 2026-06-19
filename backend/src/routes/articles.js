@@ -13,18 +13,20 @@ router.use(authenticate);
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const VALID_TYPES = ['consumable', 'bundle', 'equipment', 'rental', 'cable'];
+const VALID_TYPES = ['consumable', 'bundle', 'equipment', 'rental', 'cable', 'sammelartikel'];
 const VALID_UNITS = ['piece', 'meter', 'bundle'];
 
-/** Base SELECT — always joins category & supplier names */
+/** Base SELECT — always joins category, group & supplier names */
 const BASE_SELECT = `
   SELECT
     a.*,
     c.name AS category_name,
+    g.name AS group_name,
     s.name AS supplier_name
   FROM articles a
   LEFT JOIN categories c ON a.category_id = c.id
-  LEFT JOIN suppliers  s ON a.supplier_id  = s.id
+  LEFT JOIN groups     g ON a.group_id    = g.id
+  LEFT JOIN suppliers  s ON a.supplier_id = s.id
 `;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -54,12 +56,27 @@ function withSerials(db, article) {
   return { ...article, serials };
 }
 
+/** For Sammelartikel: attach the component list (with names + current stock) */
+function withComponents(db, article) {
+  if (article.type !== 'sammelartikel') return article;
+  const components = db.prepare(`
+    SELECT
+      ac.id, ac.qty, ac.component_article_id,
+      a.article_number, a.name, a.unit, a.stock_qty, a.stock_meters
+    FROM article_components ac
+    JOIN articles a ON a.id = ac.component_article_id
+    WHERE ac.parent_article_id = ?
+    ORDER BY a.name
+  `).all(article.id);
+  return { ...article, components };
+}
+
 // ─── GET /api/articles ────────────────────────────────────────────────────────
 router.get('/', (req, res, next) => {
   try {
     const db = getDb();
     const {
-      type, category_id, active = '1',
+      type, category_id, group_id, active = '1',
       search, low_stock,
       limit = '50', offset = '0',
     } = req.query;
@@ -79,6 +96,10 @@ router.get('/', (req, res, next) => {
     if (category_id) {
       conds.push('a.category_id = ?');
       params.push(Number(category_id));
+    }
+    if (group_id) {
+      conds.push('a.group_id = ?');
+      params.push(Number(group_id));
     }
     if (search?.trim()) {
       conds.push('(a.name LIKE ? OR a.article_number LIKE ? OR a.barcode LIKE ?)');
@@ -120,7 +141,7 @@ router.get('/barcode/:barcode', (req, res, next) => {
       return next(createError(404, `Kein Artikel mit Barcode "${req.params.barcode}"`));
     }
 
-    res.json(withSerials(db, article));
+    res.json(withComponents(db, withSerials(db, article)));
   } catch (err) { next(err); }
 });
 
@@ -130,7 +151,7 @@ router.get('/:id', (req, res, next) => {
     const db      = getDb();
     const article = db.prepare(`${BASE_SELECT} WHERE a.id = ?`).get(req.params.id);
     if (!article) return next(createError(404, 'Artikel nicht gefunden'));
-    res.json(withSerials(db, article));
+    res.json(withComponents(db, withSerials(db, article)));
   } catch (err) { next(err); }
 });
 
@@ -139,9 +160,10 @@ router.post('/', requireMinRole('warehouse_manager'), (req, res, next) => {
   try {
     const {
       barcode, name, description, type,
-      category_id, supplier_id, purchase_price,
+      category_id, group_id, supplier_id, purchase_price,
       stock_qty = 0, stock_meters = 0, min_stock = 0,
-      bundle_size, unit, location,
+      bundle_size, unit,
+      location_row, location_shelf, location_bin,
     } = req.body;
 
     if (!name?.trim())  return next(createError(400, 'Name erforderlich'));
@@ -161,10 +183,10 @@ router.post('/', requireMinRole('warehouse_manager'), (req, res, next) => {
     const { lastInsertRowid } = db.prepare(`
       INSERT INTO articles
         (article_number, barcode, name, description, type,
-         category_id, supplier_id, purchase_price,
+         category_id, group_id, supplier_id, purchase_price,
          stock_qty, stock_meters, min_stock,
-         bundle_size, unit, location)
-      VALUES (?,?,?,?,?, ?,?,?, ?,?,?, ?,?,?)
+         bundle_size, unit, location_row, location_shelf, location_bin)
+      VALUES (?,?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?,?,?)
     `).run(
       article_number,
       barcode?.trim()     || null,
@@ -172,14 +194,17 @@ router.post('/', requireMinRole('warehouse_manager'), (req, res, next) => {
       description?.trim() || null,
       type,
       category_id         || null,
-      supplier_id         || null,
-      purchase_price      ?? null,
+      group_id             || null,
+      supplier_id          || null,
+      purchase_price       ?? null,
       Number(stock_qty),
       Number(stock_meters),
       Number(min_stock),
-      bundle_size         || null,
+      bundle_size           || null,
       resolvedUnit,
-      location?.trim()    || null,
+      location_row?.trim()   || null,
+      location_shelf?.trim() || null,
+      location_bin?.trim()   || null,
     );
 
     const article = db.prepare(`${BASE_SELECT} WHERE a.id = ?`).get(lastInsertRowid);
@@ -193,7 +218,7 @@ router.post('/', requireMinRole('warehouse_manager'), (req, res, next) => {
 });
 
 // ─── PUT /api/articles/:id  (warehouse_manager+) ──────────────────────────────
-// Note: stock_qty / stock_meters are intentionally excluded — use Bewegungen (Phase 4)
+// Note: stock_qty / stock_meters are intentionally excluded — use Bewegungen
 router.put('/:id', requireMinRole('warehouse_manager'), (req, res, next) => {
   try {
     const db      = getDb();
@@ -202,8 +227,9 @@ router.put('/:id', requireMinRole('warehouse_manager'), (req, res, next) => {
 
     const {
       barcode, name, description, type,
-      category_id, supplier_id, purchase_price,
-      min_stock, bundle_size, unit, location, active,
+      category_id, group_id, supplier_id, purchase_price,
+      min_stock, bundle_size, unit,
+      location_row, location_shelf, location_bin, active,
     } = req.body;
 
     if (type && !VALID_TYPES.includes(type)) {
@@ -220,12 +246,15 @@ router.put('/:id', requireMinRole('warehouse_manager'), (req, res, next) => {
         description    = ?,
         type           = ?,
         category_id    = ?,
+        group_id       = ?,
         supplier_id    = ?,
         purchase_price = ?,
         min_stock      = ?,
         bundle_size    = ?,
         unit           = ?,
-        location       = ?,
+        location_row   = ?,
+        location_shelf = ?,
+        location_bin   = ?,
         active         = ?
       WHERE id = ?
     `).run(
@@ -234,12 +263,15 @@ router.put('/:id', requireMinRole('warehouse_manager'), (req, res, next) => {
       description           !== undefined ? (description?.trim() || null) : article.description,
       type                  ?? article.type,
       category_id           !== undefined ? (category_id || null) : article.category_id,
+      group_id              !== undefined ? (group_id    || null) : article.group_id,
       supplier_id           !== undefined ? (supplier_id || null) : article.supplier_id,
       purchase_price        !== undefined ? purchase_price : article.purchase_price,
       min_stock             !== undefined ? Number(min_stock) : article.min_stock,
       bundle_size           !== undefined ? (bundle_size || null) : article.bundle_size,
       unit                  ?? article.unit,
-      location              !== undefined ? (location?.trim() || null) : article.location,
+      location_row          !== undefined ? (location_row?.trim()   || null) : article.location_row,
+      location_shelf        !== undefined ? (location_shelf?.trim() || null) : article.location_shelf,
+      location_bin          !== undefined ? (location_bin?.trim()   || null) : article.location_bin,
       active                !== undefined ? (active ? 1 : 0) : article.active,
       article.id,
     );
@@ -300,7 +332,7 @@ router.post(
   }
 );
 
-// ─── Serial numbers (equipment & rental) ─────────────────────────────────────
+// ─── Seriennummern (equipment & rental) ──────────────────────────────────────
 
 // POST /api/articles/:id/serials  (warehouse_manager+)
 router.post('/:id/serials', requireMinRole('warehouse_manager'), (req, res, next) => {
@@ -371,6 +403,121 @@ router.get('/:id/qrcode.svg', async (req, res, next) => {
     res.setHeader('Content-Type', 'image/svg+xml');
     res.setHeader('Content-Disposition', `inline; filename="qr-${article.article_number}.svg"`);
     res.send(svg);
+  } catch (err) { next(err); }
+});
+
+// ─── Sammelartikel-Komponenten ────────────────────────────────────────────────
+// Definiert, aus welchen Einzelartikeln (+ Menge) ein Sammelartikel besteht.
+// Nur für Artikel vom Typ 'sammelartikel'. Verwaltung erst möglich, nachdem
+// der Sammelartikel selbst angelegt wurde (braucht eine article.id).
+
+// GET /api/articles/:id/components — Liste der Komponenten
+router.get('/:id/components', (req, res, next) => {
+  try {
+    const db      = getDb();
+    const article = db.prepare('SELECT * FROM articles WHERE id = ?').get(req.params.id);
+    if (!article) return next(createError(404, 'Artikel nicht gefunden'));
+
+    const components = db.prepare(`
+      SELECT
+        ac.id, ac.qty, ac.component_article_id,
+        a.article_number, a.name, a.unit, a.stock_qty, a.stock_meters
+      FROM article_components ac
+      JOIN articles a ON a.id = ac.component_article_id
+      WHERE ac.parent_article_id = ?
+      ORDER BY a.name
+    `).all(article.id);
+
+    res.json({ components });
+  } catch (err) { next(err); }
+});
+
+// POST /api/articles/:id/components  (warehouse_manager+) — Komponente hinzufügen
+router.post('/:id/components', requireMinRole('warehouse_manager'), (req, res, next) => {
+  try {
+    const db      = getDb();
+    const article = db.prepare('SELECT * FROM articles WHERE id = ?').get(req.params.id);
+    if (!article) return next(createError(404, 'Artikel nicht gefunden'));
+    if (article.type !== 'sammelartikel') {
+      return next(createError(400, 'Komponenten nur für Sammelartikel'));
+    }
+
+    const { component_article_id, qty = 1 } = req.body;
+    if (!component_article_id) return next(createError(400, 'component_article_id erforderlich'));
+    if (Number(component_article_id) === article.id) {
+      return next(createError(400, 'Ein Sammelartikel kann nicht sich selbst als Komponente enthalten'));
+    }
+    if (!Number(qty) || Number(qty) <= 0) {
+      return next(createError(400, 'Menge muss größer als 0 sein'));
+    }
+
+    const component = db.prepare('SELECT * FROM articles WHERE id = ? AND active = 1').get(component_article_id);
+    if (!component) return next(createError(404, 'Komponenten-Artikel nicht gefunden'));
+    if (component.type === 'sammelartikel') {
+      return next(createError(400, 'Ein Sammelartikel kann nicht als Komponente eines anderen Sammelartikels verwendet werden'));
+    }
+
+    const { lastInsertRowid } = db.prepare(`
+      INSERT INTO article_components (parent_article_id, component_article_id, qty)
+      VALUES (?, ?, ?)
+    `).run(article.id, component.id, Number(qty));
+
+    const row = db.prepare(`
+      SELECT ac.id, ac.qty, ac.component_article_id,
+             a.article_number, a.name, a.unit, a.stock_qty, a.stock_meters
+      FROM article_components ac
+      JOIN articles a ON a.id = ac.component_article_id
+      WHERE ac.id = ?
+    `).get(lastInsertRowid);
+
+    res.status(201).json({ component: row });
+  } catch (err) {
+    if (err.message?.includes('UNIQUE constraint failed')) {
+      return next(createError(409, 'Dieser Artikel ist bereits als Komponente hinterlegt'));
+    }
+    next(err);
+  }
+});
+
+// PUT /api/articles/:id/components/:componentId  (warehouse_manager+) — Menge ändern
+router.put('/:id/components/:componentId', requireMinRole('warehouse_manager'), (req, res, next) => {
+  try {
+    const db  = getDb();
+    const row = db.prepare(
+      'SELECT * FROM article_components WHERE id = ? AND parent_article_id = ?'
+    ).get(req.params.componentId, req.params.id);
+    if (!row) return next(createError(404, 'Komponente nicht gefunden'));
+
+    const { qty } = req.body;
+    if (!Number(qty) || Number(qty) <= 0) {
+      return next(createError(400, 'Menge muss größer als 0 sein'));
+    }
+
+    db.prepare('UPDATE article_components SET qty = ? WHERE id = ?').run(Number(qty), row.id);
+
+    const updated = db.prepare(`
+      SELECT ac.id, ac.qty, ac.component_article_id,
+             a.article_number, a.name, a.unit, a.stock_qty, a.stock_meters
+      FROM article_components ac
+      JOIN articles a ON a.id = ac.component_article_id
+      WHERE ac.id = ?
+    `).get(row.id);
+
+    res.json({ component: updated });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/articles/:id/components/:componentId  (warehouse_manager+)
+router.delete('/:id/components/:componentId', requireMinRole('warehouse_manager'), (req, res, next) => {
+  try {
+    const db  = getDb();
+    const row = db.prepare(
+      'SELECT id FROM article_components WHERE id = ? AND parent_article_id = ?'
+    ).get(req.params.componentId, req.params.id);
+    if (!row) return next(createError(404, 'Komponente nicht gefunden'));
+
+    db.prepare('DELETE FROM article_components WHERE id = ?').run(row.id);
+    res.json({ message: 'Komponente entfernt' });
   } catch (err) { next(err); }
 });
 

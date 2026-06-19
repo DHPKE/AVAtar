@@ -4,6 +4,10 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Hinweis: PRAGMA-Befehle werden in init.js gesetzt (nicht hier),
 -- da sie pro Verbindung gelten und nicht in exec()-Batches zuverlässig laufen.
+--
+-- WICHTIG: Bestehende Datenbanken werden NICHT durch dieses Skript verändert
+-- (alles CREATE TABLE IF NOT EXISTS). Spalten-/Constraint-Änderungen an
+-- bereits existierenden Tabellen laufen über die Migrationen in init.js.
 
 -- ─── Benutzer ────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS users (
@@ -15,12 +19,21 @@ CREATE TABLE IF NOT EXISTS users (
                         CHECK (role IN ('staff', 'warehouse_manager', 'admin')),
   shortcode     TEXT    UNIQUE,                          -- Kürzel-Login (z.B. "HLD")
   pin_hash      TEXT,                                     -- bcrypt-Hash des 5-stelligen PIN (Kürzel-Login)
+  department    TEXT,                                     -- Abteilung (z.B. "Lager", "Disposition")
   active        INTEGER NOT NULL DEFAULT 1,
   created_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 
 -- ─── Kategorien ──────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS categories (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  name        TEXT NOT NULL UNIQUE,
+  description TEXT,
+  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+-- ─── Gruppen (zusätzlich zur Kategorie — eigene, freie Gruppierung) ──────────
+CREATE TABLE IF NOT EXISTS groups (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   name        TEXT NOT NULL UNIQUE,
   description TEXT,
@@ -34,6 +47,11 @@ CREATE TABLE IF NOT EXISTS suppliers (
   contact_person TEXT,
   email          TEXT,
   phone          TEXT,
+  street         TEXT,                                    -- Straße + Hausnummer
+  postal_code    TEXT,                                     -- PLZ
+  city           TEXT,                                     -- Ort
+  country        TEXT,                                     -- Land
+  conditions     TEXT,                                     -- Konditionen (Zahlungs-/Lieferbedingungen)
   notes          TEXT,
   created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
@@ -46,21 +64,40 @@ CREATE TABLE IF NOT EXISTS articles (
   name           TEXT    NOT NULL,
   description    TEXT,
   type           TEXT    NOT NULL
-                         CHECK (type IN ('consumable','bundle','equipment','rental','cable')),
+                         CHECK (type IN ('consumable','bundle','equipment','rental','cable','sammelartikel')),
   category_id    INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+  group_id       INTEGER REFERENCES groups(id)     ON DELETE SET NULL,
   supplier_id    INTEGER REFERENCES suppliers(id)  ON DELETE SET NULL,
   purchase_price REAL,
-  stock_qty      INTEGER NOT NULL DEFAULT 0,             -- für Stück-Artikel
-  stock_meters   REAL    NOT NULL DEFAULT 0,             -- für Kabelware
+  stock_qty      INTEGER NOT NULL DEFAULT 0,             -- aktueller Bestand (Stück-Artikel, auch Sammelartikel)
+  stock_meters   REAL    NOT NULL DEFAULT 0,             -- aktueller Bestand (Kabelware)
   min_stock      REAL    NOT NULL DEFAULT 0,             -- Schwellwert (Stk. oder m)
   bundle_size    INTEGER,                                -- Stück pro Gebinde-Einheit
   unit           TEXT    NOT NULL DEFAULT 'piece'
                          CHECK (unit IN ('piece','meter','bundle')),
-  location       TEXT,                                   -- Regal / Fachboden / Raum
+  location       TEXT,                                   -- (Alt) Regal / Fachboden / Raum — durch location_row/shelf/bin abgelöst
+  location_row   TEXT,                                   -- Lagerort: Reihe (optional)
+  location_shelf TEXT,                                   -- Lagerort: Regal (optional)
+  location_bin   TEXT,                                   -- Lagerort: Fach (optional)
   image_path     TEXT,
   active         INTEGER NOT NULL DEFAULT 1,
   created_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
   updated_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+-- ─── Sammelartikel-Komponenten ────────────────────────────────────────────────
+-- Definiert, aus welchen Einzelartikeln (und in welcher Menge) ein
+-- Sammelartikel besteht. Der Sammelartikel selbst hat einen eigenen
+-- Lagerbestand (articles.stock_qty) UND beim Buchen werden zusätzlich
+-- die Bestände aller hier hinterlegten Komponenten mitgebucht (atomar,
+-- siehe routes/movements.js).
+CREATE TABLE IF NOT EXISTS article_components (
+  id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+  parent_article_id     INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,  -- der Sammelartikel
+  component_article_id  INTEGER NOT NULL REFERENCES articles(id) ON DELETE RESTRICT, -- Einzelartikel
+  qty                   REAL    NOT NULL DEFAULT 1,        -- Menge pro Sammelartikel-Einheit
+  created_at            TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+  UNIQUE (parent_article_id, component_article_id)
 );
 
 -- ─── Seriennummern (nur equipment & rental) ───────────────────────────────────
@@ -74,7 +111,7 @@ CREATE TABLE IF NOT EXISTS serial_numbers (
   created_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 
--- ─── Verleihe ────────────────────────────────────────────────────────────────
+-- ─── Geräteverleih ────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS rentals (
   id                 INTEGER PRIMARY KEY AUTOINCREMENT,
   serial_number_id   INTEGER NOT NULL REFERENCES serial_numbers(id),
@@ -99,6 +136,7 @@ CREATE TABLE IF NOT EXISTS movements (
   meters           REAL    NOT NULL DEFAULT 0,            -- Kabelware
   user_id          INTEGER NOT NULL REFERENCES users(id),
   reference        TEXT,                                  -- Projektnr., Auftragsnr., etc.
+  group_ref         TEXT,                                  -- verknüpft zusammengehörige Buchungen (z.B. Sammelartikel + Komponenten)
   created_at       TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 
@@ -119,10 +157,13 @@ BEGIN
 END;
 
 -- ─── Indizes für häufige Abfragen ────────────────────────────────────────────
-CREATE INDEX IF NOT EXISTS idx_articles_barcode      ON articles(barcode);
-CREATE INDEX IF NOT EXISTS idx_articles_type         ON articles(type);
-CREATE INDEX IF NOT EXISTS idx_articles_active       ON articles(active);
-CREATE INDEX IF NOT EXISTS idx_serial_numbers_status ON serial_numbers(status);
-CREATE INDEX IF NOT EXISTS idx_movements_article_id  ON movements(article_id);
-CREATE INDEX IF NOT EXISTS idx_movements_created_at  ON movements(created_at);
-CREATE INDEX IF NOT EXISTS idx_rentals_returned_at   ON rentals(returned_at);
+CREATE INDEX IF NOT EXISTS idx_articles_barcode        ON articles(barcode);
+CREATE INDEX IF NOT EXISTS idx_articles_type           ON articles(type);
+CREATE INDEX IF NOT EXISTS idx_articles_active         ON articles(active);
+CREATE INDEX IF NOT EXISTS idx_articles_group_id       ON articles(group_id);
+CREATE INDEX IF NOT EXISTS idx_article_components_parent ON article_components(parent_article_id);
+CREATE INDEX IF NOT EXISTS idx_serial_numbers_status   ON serial_numbers(status);
+CREATE INDEX IF NOT EXISTS idx_movements_article_id    ON movements(article_id);
+CREATE INDEX IF NOT EXISTS idx_movements_created_at    ON movements(created_at);
+CREATE INDEX IF NOT EXISTS idx_movements_group_ref     ON movements(group_ref);
+CREATE INDEX IF NOT EXISTS idx_rentals_returned_at     ON rentals(returned_at);

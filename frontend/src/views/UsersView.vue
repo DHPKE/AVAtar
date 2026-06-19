@@ -22,6 +22,7 @@
               <th class="text-left py-2 pr-4 font-medium text-xs" style="color:var(--muted);">Benutzername</th>
               <th class="text-left py-2 pr-4 font-medium text-xs hidden md:table-cell" style="color:var(--muted);">E-Mail</th>
               <th class="text-left py-2 pr-4 font-medium text-xs" style="color:var(--muted);">Rolle</th>
+              <th class="text-left py-2 pr-4 font-medium text-xs hidden md:table-cell" style="color:var(--muted);">Abteilung</th>
               <th class="text-left py-2 pr-4 font-medium text-xs hidden md:table-cell" style="color:var(--muted);">Kürzel</th>
               <th class="text-left py-2 pr-4 font-medium text-xs hidden lg:table-cell" style="color:var(--muted);">Status</th>
               <th class="text-left py-2 font-medium text-xs hidden lg:table-cell" style="color:var(--muted);">Angelegt</th>
@@ -44,6 +45,7 @@
                   {{ ROLE_META[u.role]?.label }}
                 </span>
               </td>
+              <td class="py-2.5 pr-4 text-xs hidden md:table-cell" style="color:var(--muted);">{{ u.department || '—' }}</td>
               <td class="py-2.5 pr-4 hidden md:table-cell">
                 <span v-if="u.shortcode" class="text-xs font-mono px-2 py-0.5 rounded" style="background:var(--surface);color:var(--accent);">{{ u.shortcode }}</span>
                 <span v-else class="text-xs" style="color:var(--muted);">—</span>
@@ -103,6 +105,14 @@
                   :disabled="editingId === auth.user?.id">
                   <option v-for="(meta, key) in ROLE_META" :key="key" :value="key">{{ meta.label }}</option>
                 </select>
+              </div>
+
+              <div>
+                <label class="block text-xs font-medium mb-1" style="color:var(--muted);">
+                  Abteilung <span style="color:var(--muted);">(optional)</span>
+                </label>
+                <input v-model="form.department" type="text" placeholder="z.B. Lager, Disposition, Service"
+                  class="w-full rounded-lg px-3 text-sm" style="height:40px;background:var(--card);border:1px solid var(--border);color:var(--text);outline:none;" />
               </div>
 
               <div>
@@ -198,7 +208,7 @@ const ROLE_META = {
   admin:             { label:'Administrator',  color:'#F59E0B', bg:'rgba(245,158,11,.15)' },
 }
 
-const emptyForm = () => ({ username:'', email:'', password:'', role:'staff', active:true, shortcode:'', pin:'' })
+const emptyForm = () => ({ username:'', email:'', password:'', role:'staff', department:'', active:true, shortcode:'', pin:'' })
 const form = ref(emptyForm())
 
 onMounted(async () => {
@@ -207,13 +217,13 @@ onMounted(async () => {
 })
 
 function openCreate() { editingId.value = null; form.value = emptyForm(); formError.value = ''; formSuccess.value = ''; newPw.value = ''; newPin.value = ''; panelOpen.value = true }
-function openEdit(u)  { editingId.value = u.id; form.value = { ...emptyForm(), email:u.email, role:u.role, active:!!u.active, shortcode:u.shortcode||'' }; formError.value = ''; formSuccess.value = ''; newPw.value = ''; newPin.value = ''; panelOpen.value = true }
+function openEdit(u)  { editingId.value = u.id; form.value = { ...emptyForm(), email:u.email, role:u.role, department:u.department||'', active:!!u.active, shortcode:u.shortcode||'' }; formError.value = ''; formSuccess.value = ''; newPw.value = ''; newPin.value = ''; panelOpen.value = true }
 
 async function save() {
   saving.value = true; formError.value = ''; formSuccess.value = ''
   try {
     if (editingId.value) {
-      await api.put(`/users/${editingId.value}`, { email:form.value.email, role:form.value.role, active:form.value.active, shortcode:form.value.shortcode })
+      await api.put(`/users/${editingId.value}`, { email:form.value.email, role:form.value.role, active:form.value.active, shortcode:form.value.shortcode, department:form.value.department })
     } else {
       await api.post('/users', form.value)
     }

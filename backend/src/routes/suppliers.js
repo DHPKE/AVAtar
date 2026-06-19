@@ -28,18 +28,27 @@ router.get('/:id', (req, res, next) => {
 // ─── POST /api/suppliers ──────────────────────────────────────────────────────
 router.post('/', requireMinRole('warehouse_manager'), (req, res, next) => {
   try {
-    const { name, contact_person, email, phone, notes } = req.body;
+    const {
+      name, contact_person, email, phone,
+      street, postal_code, city, country, conditions, notes,
+    } = req.body;
     if (!name?.trim()) return next(createError(400, 'Name erforderlich'));
 
     const db     = getDb();
     const result = db.prepare(`
-      INSERT INTO suppliers (name, contact_person, email, phone, notes)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO suppliers
+        (name, contact_person, email, phone, street, postal_code, city, country, conditions, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       name.trim(),
       contact_person?.trim() || null,
       email?.trim()          || null,
       phone?.trim()          || null,
+      street?.trim()         || null,
+      postal_code?.trim()    || null,
+      city?.trim()           || null,
+      country?.trim()        || null,
+      conditions?.trim()     || null,
       notes?.trim()          || null,
     );
 
@@ -55,15 +64,34 @@ router.put('/:id', requireMinRole('warehouse_manager'), (req, res, next) => {
     const supplier = db.prepare('SELECT * FROM suppliers WHERE id = ?').get(req.params.id);
     if (!supplier) return next(createError(404, 'Lieferant nicht gefunden'));
 
-    const { name, contact_person, email, phone, notes } = req.body;
+    const {
+      name, contact_person, email, phone,
+      street, postal_code, city, country, conditions, notes,
+    } = req.body;
+
     db.prepare(`
-      UPDATE suppliers SET name = ?, contact_person = ?, email = ?, phone = ?, notes = ?
+      UPDATE suppliers SET
+        name           = ?,
+        contact_person = ?,
+        email          = ?,
+        phone          = ?,
+        street         = ?,
+        postal_code    = ?,
+        city           = ?,
+        country        = ?,
+        conditions     = ?,
+        notes          = ?
       WHERE id = ?
     `).run(
       name?.trim()           ?? supplier.name,
       contact_person?.trim() ?? supplier.contact_person,
       email?.trim()          ?? supplier.email,
       phone?.trim()          ?? supplier.phone,
+      street?.trim()         ?? supplier.street,
+      postal_code?.trim()    ?? supplier.postal_code,
+      city?.trim()           ?? supplier.city,
+      country?.trim()        ?? supplier.country,
+      conditions?.trim()     ?? supplier.conditions,
       notes?.trim()          ?? supplier.notes,
       supplier.id,
     );

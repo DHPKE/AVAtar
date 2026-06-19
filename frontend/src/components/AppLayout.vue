@@ -110,12 +110,13 @@ onUnmounted(() => window.removeEventListener('resize', onResize))
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 const NAV = [
-  { to: '/dashboard',     label: 'Dashboard',     minRole: 'staff'             },
+  { to: '/dashboard',     label: 'Dashboard',      minRole: 'staff'             },
   { to: '/scan',          label: 'Scannen',        minRole: 'staff'             },
   { to: '/buchen',        label: 'Warenkorb',      minRole: 'staff'             },
   { to: '/artikel',       label: 'Artikel',        minRole: 'staff'             },
-  { to: '/verleihe',      label: 'Verleihe',       minRole: 'warehouse_manager' },
+  { to: '/verleihe',      label: 'Geräteverleih',  minRole: 'warehouse_manager' },
   { to: '/kategorien',    label: 'Kategorien',     minRole: 'warehouse_manager' },
+  { to: '/gruppen',       label: 'Gruppen',        minRole: 'warehouse_manager' },
   { to: '/lieferanten',   label: 'Lieferanten',    minRole: 'warehouse_manager' },
   { to: '/benutzer',      label: 'Benutzer',       minRole: 'admin'             },
   { to: '/einstellungen', label: 'Einstellungen',  minRole: 'admin'             },

@@ -45,7 +45,7 @@ router.get('/', (req, res, next) => {
 // ─── POST /api/users ──────────────────────────────────────────────────────────
 router.post('/', (req, res, next) => {
   try {
-    const { username, email, password, role = 'staff', shortcode, pin } = req.body;
+    const { username, email, password, role = 'staff', department, shortcode, pin } = req.body;
 
     if (!username?.trim()) return next(createError(400, 'Benutzername erforderlich'));
     if (!email?.trim())    return next(createError(400, 'E-Mail erforderlich'));
@@ -64,9 +64,9 @@ router.post('/', (req, res, next) => {
     const hash = bcrypt.hashSync(password, 12);
 
     const { lastInsertRowid } = db.prepare(`
-      INSERT INTO users (username, email, password_hash, role, shortcode, pin_hash)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(username.trim(), email.trim(), hash, role, code, pinHash);
+      INSERT INTO users (username, email, password_hash, role, department, shortcode, pin_hash)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(username.trim(), email.trim(), hash, role, department?.trim() || null, code, pinHash);
 
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(lastInsertRowid);
     res.status(201).json({ user: sanitise(user) });
@@ -91,7 +91,7 @@ router.put('/:id', (req, res, next) => {
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
     if (!user) return next(createError(404, 'Benutzer nicht gefunden'));
 
-    const { email, role, active, shortcode } = req.body;
+    const { email, role, active, shortcode, department } = req.body;
     const VALID_ROLES = ['staff', 'warehouse_manager', 'admin'];
     if (role && !VALID_ROLES.includes(role)) {
       return next(createError(400, `Ungültige Rolle. Erlaubt: ${VALID_ROLES.join(', ')}`));
@@ -108,13 +108,14 @@ router.put('/:id', (req, res, next) => {
     const pinHash = (shortcode !== undefined && code === null) ? null : user.pin_hash;
 
     db.prepare(`
-      UPDATE users SET email = ?, role = ?, active = ?, shortcode = ?, pin_hash = ? WHERE id = ?
+      UPDATE users SET email = ?, role = ?, active = ?, shortcode = ?, pin_hash = ?, department = ? WHERE id = ?
     `).run(
-      email  ?? user.email,
-      role   ?? user.role,
+      email      ?? user.email,
+      role       ?? user.role,
       active !== undefined ? (active ? 1 : 0) : user.active,
       code,
       pinHash,
+      department !== undefined ? (department?.trim() || null) : user.department,
       user.id,
     );
 
@@ -179,7 +180,7 @@ router.delete('/:id', (req, res, next) => {
     if (!user) return next(createError(404, 'Benutzer nicht gefunden'));
 
     if (req.user.sub === user.id) {
-      return next(createError(400, 'Eigenen Account nicht löschbar'));
+      return next(createError(400, 'Eigenen Account nicht deaktivierbar'));
     }
 
     db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(user.id);
