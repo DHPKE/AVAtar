@@ -3,7 +3,7 @@
     class="min-h-screen flex items-center justify-center px-4"
     style="background: var(--bg);"
   >
-    <div class="w-full transition-all" :class="mode === 'code' ? 'max-w-sm' : 'max-w-xs'">
+    <div class="w-full transition-all" :class="mode === 'code' ? 'max-w-2xl' : 'max-w-xs'">
 
       <!-- Brand -->
       <div class="text-center mb-8">
@@ -11,10 +11,12 @@
         <p class="text-sm mt-1" style="color: var(--muted);">Lagerverwaltung</p>
       </div>
 
-      <!-- Mode toggle -->
-      <div class="flex rounded-lg p-1 mb-4" style="background: var(--surface); border: 1px solid var(--border);">
+      <!-- Mode toggle — large glove-friendly tap targets -->
+      <div class="flex rounded-2xl p-1.5 mb-5" style="background: var(--surface); border: 2px solid var(--border);">
         <button
-          class="flex-1 py-2 rounded-md text-sm font-medium transition-colors"
+          type="button"
+          class="flex-1 rounded-xl text-base font-semibold transition-colors select-none"
+          style="height:60px; -webkit-tap-highlight-color:transparent; touch-action:manipulation;"
           :style="mode === 'password'
             ? 'background: var(--card); color: var(--text);'
             : 'color: var(--muted);'"
@@ -23,7 +25,9 @@
           Anmelden
         </button>
         <button
-          class="flex-1 py-2 rounded-md text-sm font-medium transition-colors"
+          type="button"
+          class="flex-1 rounded-xl text-base font-semibold transition-colors select-none"
+          style="height:60px; -webkit-tap-highlight-color:transparent; touch-action:manipulation;"
           :style="mode === 'code'
             ? 'background: var(--card); color: var(--text);'
             : 'color: var(--muted);'"
@@ -35,10 +39,11 @@
 
       <!-- Card -->
       <div
-        class="rounded-xl p-6"
+        class="rounded-2xl p-6"
+        :class="mode === 'code' ? 'sm:p-8' : ''"
         style="background: var(--card); border: 1px solid var(--border);"
       >
-        <!-- ── Password login ─────────────────────────────────────────────────── -->
+        <!-- ── Password login (keyboard-driven, e.g. admin desktop) ───────────── -->
         <form v-if="mode === 'password'" @submit.prevent="handleLogin" novalidate>
           <div class="mb-4">
             <label class="block text-xs mb-1.5 font-medium" style="color: var(--muted);">
@@ -90,41 +95,43 @@
           </button>
         </form>
 
-        <!-- ── Kürzel (shortcode) + PIN login — on-screen keyboard/numpad ──────── -->
+        <!-- ── Kürzel (shortcode) + PIN login — large glove-friendly touch flow ─ -->
         <div v-else>
-          <div class="mb-3">
-            <label class="block text-xs mb-2 font-medium text-center" style="color: var(--muted);">
-              Kürzel
-            </label>
-            <input
-              :value="code"
-              type="text"
-              readonly
-              placeholder="HLD"
-              class="w-full text-center text-3xl font-bold tracking-widest uppercase rounded-xl px-4 transition-colors cursor-pointer"
-              style="height: 60px; background: var(--surface); outline: none;"
-              :style="activeField === 'code' ? 'border:2px solid var(--accent); color: var(--accent);' : 'border:2px solid var(--border); color: var(--accent);'"
-              @click="activeField = 'code'"
-            />
+          <div class="grid grid-cols-2 gap-3 mb-5">
+            <div>
+              <label class="block text-xs mb-2 font-medium text-center" style="color: var(--muted);">
+                Kürzel
+              </label>
+              <input
+                :value="code"
+                type="text"
+                readonly
+                placeholder="HLD"
+                class="w-full text-center font-bold tracking-widest uppercase rounded-2xl px-3 transition-colors cursor-pointer select-none"
+                style="height: 96px; font-size: 2.75rem; background: var(--surface); outline: none;"
+                :style="activeField === 'code' ? 'border:3px solid var(--accent); color: var(--accent);' : 'border:3px solid var(--border); color: var(--accent);'"
+                @click="activeField = 'code'"
+              />
+            </div>
+
+            <div>
+              <label class="block text-xs mb-2 font-medium text-center" style="color: var(--muted);">
+                PIN
+              </label>
+              <input
+                :value="'•'.repeat(pin.length)"
+                type="text"
+                readonly
+                placeholder="• • • • •"
+                class="w-full text-center font-bold tracking-[0.3em] rounded-2xl px-2 transition-colors cursor-pointer select-none"
+                style="height: 96px; font-size: 2.25rem; background: var(--surface); color: var(--text); outline: none;"
+                :style="activeField === 'pin' ? 'border:3px solid var(--accent);' : 'border:3px solid var(--border);'"
+                @click="activeField = 'pin'"
+              />
+            </div>
           </div>
 
-          <div class="mb-4">
-            <label class="block text-xs mb-2 font-medium text-center" style="color: var(--muted);">
-              PIN
-            </label>
-            <input
-              :value="'•'.repeat(pin.length)"
-              type="text"
-              readonly
-              placeholder="• • • • •"
-              class="w-full text-center text-3xl font-bold tracking-[0.4em] rounded-xl px-4 transition-colors cursor-pointer"
-              style="height: 60px; background: var(--surface); color: var(--text); outline: none;"
-              :style="activeField === 'pin' ? 'border:2px solid var(--accent);' : 'border:2px solid var(--border);'"
-              @click="activeField = 'pin'"
-            />
-          </div>
-
-          <div v-if="error" class="mb-4 px-3 py-2 rounded-lg text-sm text-center" style="background: rgba(239,68,68,.1); color: var(--error);">
+          <div v-if="error" class="mb-4 px-3 py-3 rounded-xl text-sm text-center font-medium" style="background: rgba(239,68,68,.1); color: var(--error);">
             {{ error }}
           </div>
 
@@ -150,7 +157,7 @@
             @enter="handleCodeLogin"
           />
 
-          <p class="text-xs text-center mt-3" style="color: var(--muted);">
+          <p class="text-xs text-center mt-4" style="color: var(--muted);">
             Schnellanmeldung für Lager-Scanstationen
           </p>
         </div>

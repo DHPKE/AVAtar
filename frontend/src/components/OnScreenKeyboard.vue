@@ -1,29 +1,29 @@
 <template>
   <div>
-    <div class="flex flex-col gap-1.5">
-      <div v-for="(row, i) in rows" :key="i" class="flex gap-1.5 justify-center">
+    <div class="flex flex-col gap-2">
+      <div v-for="(row, i) in rows" :key="i" class="flex gap-2 justify-center">
         <button
           v-for="key in row"
           :key="key"
           type="button"
-          class="rounded-lg font-semibold active:opacity-60 transition-opacity flex items-center justify-center"
-          style="height:44px; min-width:30px; flex:1; max-width:42px; background:var(--card); border:1px solid var(--border); color:var(--text); font-size:15px; -webkit-tap-highlight-color:transparent;"
+          class="rounded-xl font-bold active:opacity-50 transition-opacity flex items-center justify-center select-none"
+          style="height:60px; min-width:40px; flex:1; max-width:58px; background:var(--card); border:2px solid var(--border); color:var(--text); font-size:19px; -webkit-tap-highlight-color:transparent; touch-action:manipulation;"
           @click="$emit('key', key)"
         >{{ key }}</button>
       </div>
 
       <!-- Bottom row: backspace + clear -->
-      <div class="flex gap-1.5 justify-center mt-1">
+      <div class="flex gap-2 justify-center mt-1">
         <button
           type="button"
-          class="rounded-lg font-semibold active:opacity-60 transition-opacity flex items-center justify-center flex-1"
-          style="height:44px; max-width:140px; background:var(--card); border:1px solid var(--border); color:var(--muted); font-size:14px; -webkit-tap-highlight-color:transparent;"
+          class="rounded-xl font-bold active:opacity-50 transition-opacity flex items-center justify-center flex-1 select-none"
+          style="height:60px; max-width:170px; background:var(--card); border:2px solid var(--border); color:var(--muted); font-size:17px; -webkit-tap-highlight-color:transparent; touch-action:manipulation;"
           @click="$emit('clear')"
         >Löschen</button>
         <button
           type="button"
-          class="rounded-lg font-semibold active:opacity-60 transition-opacity flex items-center justify-center flex-1"
-          style="height:44px; max-width:140px; background:var(--card); border:1px solid var(--border); color:var(--text); font-size:18px; -webkit-tap-highlight-color:transparent;"
+          class="rounded-xl font-bold active:opacity-50 transition-opacity flex items-center justify-center flex-1 select-none"
+          style="height:60px; max-width:170px; background:var(--card); border:2px solid var(--border); color:var(--text); font-size:24px; -webkit-tap-highlight-color:transparent; touch-action:manipulation;"
           @click="$emit('backspace')"
           aria-label="Ein Zeichen löschen"
         >⌫</button>
@@ -33,8 +33,8 @@
     <button
       v-if="showEnter"
       type="button"
-      class="w-full rounded-xl font-bold text-lg tracking-wide mt-3 transition-opacity active:opacity-80"
-      style="height:56px; background:var(--accent); color:#fff; -webkit-tap-highlight-color:transparent;"
+      class="w-full rounded-2xl font-bold text-xl tracking-wide mt-3 transition-opacity active:opacity-70 select-none"
+      style="height:80px; background:var(--accent); color:#fff; -webkit-tap-highlight-color:transparent; touch-action:manipulation;"
       :style="enterDisabled ? 'opacity:.4;' : ''"
       :disabled="enterDisabled"
       @click="$emit('enter')"
