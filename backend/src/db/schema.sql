@@ -160,10 +160,13 @@ END;
 CREATE INDEX IF NOT EXISTS idx_articles_barcode        ON articles(barcode);
 CREATE INDEX IF NOT EXISTS idx_articles_type           ON articles(type);
 CREATE INDEX IF NOT EXISTS idx_articles_active         ON articles(active);
-CREATE INDEX IF NOT EXISTS idx_articles_group_id       ON articles(group_id);
 CREATE INDEX IF NOT EXISTS idx_article_components_parent ON article_components(parent_article_id);
 CREATE INDEX IF NOT EXISTS idx_serial_numbers_status   ON serial_numbers(status);
 CREATE INDEX IF NOT EXISTS idx_movements_article_id    ON movements(article_id);
 CREATE INDEX IF NOT EXISTS idx_movements_created_at    ON movements(created_at);
-CREATE INDEX IF NOT EXISTS idx_movements_group_ref     ON movements(group_ref);
 CREATE INDEX IF NOT EXISTS idx_rentals_returned_at     ON rentals(returned_at);
+-- Hinweis: idx_articles_group_id und idx_movements_group_ref werden NICHT hier,
+-- sondern in init.js (_migrateSchema) angelegt — erst NACHDEM die Spalten
+-- group_id/group_ref per ALTER TABLE auf Bestands-DBs ergänzt wurden.
+-- Würden sie hier stehen, schlägt schema.sql auf jeder bestehenden DB fehl,
+-- weil die Spalte zum Zeitpunkt dieses exec()-Laufs noch nicht existiert.
