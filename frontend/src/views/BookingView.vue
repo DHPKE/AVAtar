@@ -144,21 +144,18 @@
             </button>
           </div>
 
-          <!-- Inline qty stepper -->
+          <!-- Menge — tippen öffnet Zahlenblock zur direkten Eingabe -->
           <div class="flex items-center gap-2">
-            <button class="rounded font-bold text-sm active:opacity-70 flex items-center justify-center"
-              style="width:32px;height:32px;background:var(--surface);border:1px solid var(--border);color:var(--text);"
-              @click="adjustCartItem(item, -1)">−</button>
-            <span class="text-sm font-semibold w-16 text-center" style="color:var(--text);">
+            <button type="button"
+              class="rounded-lg font-semibold text-sm active:opacity-70 transition-opacity select-none"
+              style="height:36px; min-width:76px; background:var(--surface);border:1.5px solid var(--border);color:var(--text);-webkit-tap-highlight-color:transparent;touch-action:manipulation;"
+              @click="openQtyEditor(item)">
               {{ item.unit === 'meter' ? item.meters + ' m' : item.qty + ' Stk' }}
-            </span>
-            <button class="rounded font-bold text-sm active:opacity-70 flex items-center justify-center"
-              style="width:32px;height:32px;background:var(--surface);border:1px solid var(--border);color:var(--text);"
-              @click="adjustCartItem(item, 1)">+</button>
+            </button>
             <input v-model="item.reference" @input="cart.updateItem(item.uid, { reference: item.reference })"
               type="text" placeholder="Referenz"
               class="flex-1 rounded px-2 text-xs"
-              style="height:32px;background:var(--surface);border:1px solid var(--border);color:var(--text);outline:none;" />
+              style="height:36px;background:var(--surface);border:1px solid var(--border);color:var(--text);outline:none;" />
           </div>
 
           <div v-if="item.error" class="mt-2 text-xs rounded px-2 py-1.5" style="background:rgba(239,68,68,.1);color:var(--error);">
@@ -186,6 +183,31 @@
       <div v-if="bookError" class="mt-3 rounded-xl px-4 py-3 text-sm text-center" style="background:rgba(239,68,68,.12);color:var(--error);">
         {{ bookError }}
       </div>
+
+      <!-- ── Menge-Editor (Warenkorb-Position) ────────────────────────────────── -->
+      <Teleport to="body">
+        <div v-if="editingItem" class="fixed inset-0 z-50 flex items-center justify-center" style="background:rgba(0,0,0,.6);" @click.self="editingItem = null">
+          <div class="rounded-2xl p-5 mx-4 w-full" style="background:var(--card);border:1px solid var(--border);max-width:340px;">
+            <div class="flex items-center justify-between mb-4">
+              <p class="text-sm font-semibold truncate" style="color:var(--text);">{{ editingItem.article_name }}</p>
+              <button type="button" class="text-xl leading-none flex-shrink-0 ml-2" style="color:var(--muted);" @click="editingItem = null">×</button>
+            </div>
+
+            <div class="text-center mb-4">
+              <span class="text-4xl font-bold" style="color:var(--text);">{{ editAmountDisplay }}</span>
+              <span class="text-base ml-1" style="color:var(--muted);">{{ editingItem.unit === 'meter' ? 'm' : 'Stk' }}</span>
+            </div>
+
+            <OnScreenNumpad
+              :allow-decimal="editingItem.unit === 'meter'"
+              enter-label="Übernehmen"
+              @digit="appendEditDigit"
+              @backspace="editBackspace"
+              @enter="commitQtyEdit"
+            />
+          </div>
+        </div>
+      </Teleport>
 
       <!-- ── Success overlay ──────────────────────────────────────────────────── -->
       <Teleport to="body">
@@ -240,6 +262,11 @@ const booking         = ref(false)
 const bookError       = ref('')
 const showSuccess     = ref(false)
 const successCount    = ref(0)
+
+const editingItem        = ref(null)
+const editAmountBuffer   = ref('')
+const editAmountTouched  = ref(false)
+const editAmountDisplay  = computed(() => editAmountBuffer.value === '' ? '0' : editAmountBuffer.value)
 
 // Scanner stays active even with a pending article showing —
 // staff can keep scanning to queue items rapidly without finishing the dialog
@@ -330,14 +357,35 @@ function addPendingToCart() {
   nextTick(() => barcodeInput.value?.focus())
 }
 
-function adjustCartItem(item, delta) {
-  if (item.unit === 'meter') {
-    const next = Math.max(0.5, Math.round((item.meters + delta * 0.5) * 10) / 10)
-    cart.updateItem(item.uid, { meters: next })
-  } else {
-    const next = Math.max(1, item.qty + delta)
-    cart.updateItem(item.uid, { qty: next })
+function openQtyEditor(item) {
+  editingItem.value        = item
+  editAmountBuffer.value   = String(item.unit === 'meter' ? item.meters : item.qty)
+  editAmountTouched.value  = false
+}
+
+function appendEditDigit(d) {
+  if (!editAmountTouched.value) {
+    editAmountBuffer.value  = ''
+    editAmountTouched.value = true
   }
+  editAmountBuffer.value = appendDigit(editAmountBuffer.value, d, {
+    allowDecimal: editingItem.value?.unit === 'meter',
+    maxLength: 6,
+  })
+}
+
+function editBackspace() {
+  editAmountTouched.value = true
+  editAmountBuffer.value  = bufferBackspace(editAmountBuffer.value)
+}
+
+function commitQtyEdit() {
+  const amount = parseAmount(editAmountBuffer.value)
+  if (editingItem.value && amount > 0) {
+    const patch = editingItem.value.unit === 'meter' ? { meters: amount } : { qty: amount }
+    cart.updateItem(editingItem.value.uid, patch)
+  }
+  editingItem.value = null
 }
 
 function confirmClear() {
