@@ -210,18 +210,21 @@
 
 <script setup>
 import { ref, computed, nextTick, onMounted } from 'vue'
+import AppLayout      from '@/components/AppLayout.vue'
 import StaffLayout    from '@/components/StaffLayout.vue'
 import OnScreenNumpad from '@/components/OnScreenNumpad.vue'
+import { useAuthStore } from '@/stores/auth'
 import { useCartStore } from '@/stores/cart'
 import { useBarcodeScanner } from '@/composables/useBarcodeScanner.js'
 import api from '@/api/axios'
 import { fmtStock } from '@/utils/labels.js'
 import { appendDigit, backspace as bufferBackspace, parseAmount, toBuffer } from '@/utils/numpadBuffer.js'
 
+const auth   = useAuthStore()
 const cart   = useCartStore()
-// Warenkorb ist die einheitliche Buchungsoberfläche — Buchen/Verlauf/Konto +
-// Abmelden im Footer gelten für jede Rolle, nicht nur Staff
-const layout = StaffLayout
+// Admin/Lagerverwalter brauchen das Hauptmenü (Sidebar) → AppLayout;
+// Staff bekommt die Touch-optimierte Bottom-Nav (Buchen/Verlauf/Konto + Abmelden)
+const layout = computed(() => auth.hasMinRole('warehouse_manager') ? AppLayout : StaffLayout)
 
 const barcode        = ref('')
 const barcodeInput    = ref(null)

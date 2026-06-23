@@ -112,6 +112,7 @@ onUnmounted(() => window.removeEventListener('resize', onResize))
 const NAV = [
   { to: '/dashboard',     label: 'Dashboard',      minRole: 'staff'             },
   { to: '/buchen',        label: 'Warenkorb',      minRole: 'staff'             },
+  { to: '/verlauf',       label: 'Verlauf',        minRole: 'staff'             },
   { to: '/artikel',       label: 'Artikel',        minRole: 'staff'             },
   { to: '/inventur',      label: 'Inventur',       minRole: 'warehouse_manager' },
   { to: '/scanliste',     label: 'Scanliste',      minRole: 'warehouse_manager' },
@@ -121,6 +122,7 @@ const NAV = [
   { to: '/lieferanten',   label: 'Lieferanten',    minRole: 'warehouse_manager' },
   { to: '/benutzer',      label: 'Benutzer',       minRole: 'admin'             },
   { to: '/einstellungen', label: 'Einstellungen',  minRole: 'admin'             },
+  { to: '/konto',         label: 'Konto',          minRole: 'staff'             },
 ]
 
 const visibleNav = computed(() =>
