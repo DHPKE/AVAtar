@@ -1,10 +1,8 @@
 <script setup>
-import { useRouter }    from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
+import { useRouter } from 'vue-router'
 
 const router = useRouter()
-const auth   = useAuthStore()
 
-// staff → scan workflow, everyone else → dashboard
-router.replace(auth.role === 'staff' ? '/scan' : '/dashboard')
+// Warenkorb ist die Startseite für alle Rollen
+router.replace('/buchen')
 </script>

@@ -38,12 +38,12 @@
     <button
       v-if="showEnter"
       type="button"
-      class="w-full rounded-2xl font-bold tracking-wide mt-3 transition-opacity active:opacity-70 select-none"
+      class="w-full rounded-2xl font-bold tracking-wide mt-3 transition-opacity active:opacity-70 select-none flex items-center justify-center gap-2"
       style="height:80px; font-size:1.4rem; background:var(--accent); color:#fff; -webkit-tap-highlight-color:transparent; touch-action:manipulation;"
       :style="enterDisabled ? 'opacity:.4;' : ''"
       :disabled="enterDisabled"
       @click="$emit('enter')"
-    >{{ enterLabel }}</button>
+    ><slot name="enter-icon" />{{ enterLabel }}</button>
   </div>
 </template>
 

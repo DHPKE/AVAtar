@@ -22,7 +22,7 @@
             : 'color: var(--muted);'"
           @click="switchMode('password')"
         >
-          Anmelden
+          Admin
         </button>
         <button
           type="button"
@@ -33,7 +33,7 @@
             : 'color: var(--muted);'"
           @click="switchMode('code')"
         >
-          Kürzel
+          User
         </button>
       </div>
 
@@ -100,7 +100,7 @@
           <div class="grid grid-cols-2 gap-3 mb-5">
             <div>
               <label class="block text-xs mb-2 font-medium text-center" style="color: var(--muted);">
-                Kürzel
+                User
               </label>
               <input
                 :value="code"
@@ -135,9 +135,10 @@
             {{ error }}
           </div>
 
-          <!-- ── On-screen keyboard (Kürzel) ───────────────────────────────────── -->
+          <!-- ── On-screen keyboard (User) ───────────────────────────────────────── -->
           <OnScreenKeyboard
             v-if="activeField === 'code'"
+            :show-numbers="false"
             enter-label="Weiter"
             :enter-disabled="code.trim().length < 2"
             @key="appendCodeChar"
@@ -177,7 +178,7 @@ import OnScreenNumpad   from '@/components/OnScreenNumpad.vue'
 const router   = useRouter()
 const auth     = useAuthStore()
 
-const mode        = ref('password')
+const mode        = ref('code')
 const username    = ref('')
 const password    = ref('')
 const code        = ref('')

@@ -43,12 +43,13 @@
         </div>
 
         <!-- Type toggle -->
-        <div class="flex gap-2 mb-3">
-          <button v-for="t in ['out','in']" :key="t"
-            class="flex-1 rounded-lg py-2.5 text-sm font-bold transition-opacity active:opacity-80"
+        <div class="flex gap-3 mb-4">
+          <button v-for="t in ['out','in']" :key="t" type="button"
+            class="flex-1 rounded-xl font-bold tracking-wide transition-opacity active:opacity-80 select-none"
+            style="height:72px; font-size:1.25rem; -webkit-tap-highlight-color:transparent; touch-action:manipulation;"
             :style="pendingType === t
               ? `background:${t === 'out' ? '#EF4444' : '#22C55E'};color:#fff;`
-              : 'background:var(--surface);border:1px solid var(--border);color:var(--muted);'"
+              : 'background:var(--surface);border:2px solid var(--border);color:var(--muted);'"
             @click="pendingType = t">
             {{ t === 'out' ? 'AUSGANG' : 'EINGANG' }}
           </button>
@@ -60,7 +61,17 @@
             style="width:48px;height:48px;background:var(--surface);border:1px solid var(--border);color:var(--text);"
             @click="adjustPending(-1)">−</button>
           <div class="flex-1 text-center">
-            <span class="text-3xl font-bold" style="color:var(--text);">{{ pendingDisplayAmount }}</span>
+            <input
+              ref="qtyInput"
+              :value="pendingDisplayAmount"
+              readonly
+              inputmode="decimal"
+              class="text-3xl font-bold text-center bg-transparent rounded-lg transition-colors"
+              style="width:96px; color:var(--text); outline:none; border:2px solid transparent;"
+              @keydown="handleQtyKeydown"
+              @focus="e => e.target.style.borderColor='var(--accent)'"
+              @blur="e => e.target.style.borderColor='transparent'"
+            />
             <span class="text-sm ml-1" style="color:var(--muted);">{{ pendingArticle.unit === 'meter' ? 'm' : 'Stk' }}</span>
           </div>
           <button class="rounded-lg font-bold text-xl active:opacity-70 flex items-center justify-center"
@@ -75,11 +86,19 @@
 
         <OnScreenNumpad
           :allow-decimal="pendingArticle.unit === 'meter'"
-          enter-label="Zum Warenkorb hinzufügen"
+          enter-label="Hinzufügen"
           @digit="appendPendingDigit"
           @backspace="pendingBackspace"
           @enter="addPendingToCart"
-        />
+        >
+          <template #enter-icon>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="9" cy="20" r="1.4"/>
+              <circle cx="18" cy="20" r="1.4"/>
+              <path d="M2.5 3h2l2.8 12.4a2 2 0 0 0 2 1.6h7.4a2 2 0 0 0 2-1.6L21 7H6"/>
+            </svg>
+          </template>
+        </OnScreenNumpad>
       </div>
 
       <!-- ── Cart ──────────────────────────────────────────────────────────────── -->
@@ -113,7 +132,16 @@
               </div>
               <p class="text-xs font-mono mt-0.5" style="color:var(--muted);">{{ item.article_number }}</p>
             </div>
-            <button class="text-lg leading-none flex-shrink-0" style="color:var(--muted);" @click="cart.removeItem(item.uid)">×</button>
+            <button type="button"
+              class="rounded-lg flex-shrink-0 flex items-center justify-center transition-opacity active:opacity-70 select-none"
+              style="width:44px;height:44px;background:#EF4444;color:#fff;-webkit-tap-highlight-color:transparent;touch-action:manipulation;"
+              aria-label="Entfernen"
+              @click="cart.removeItem(item.uid)">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="6" y1="6" x2="18" y2="18"/>
+                <line x1="18" y1="6" x2="6" y2="18"/>
+              </svg>
+            </button>
           </div>
 
           <!-- Inline qty stepper -->
@@ -182,22 +210,22 @@
 
 <script setup>
 import { ref, computed, nextTick, onMounted } from 'vue'
-import AppLayout      from '@/components/AppLayout.vue'
 import StaffLayout    from '@/components/StaffLayout.vue'
 import OnScreenNumpad from '@/components/OnScreenNumpad.vue'
-import { useAuthStore } from '@/stores/auth'
 import { useCartStore } from '@/stores/cart'
 import { useBarcodeScanner } from '@/composables/useBarcodeScanner.js'
 import api from '@/api/axios'
 import { fmtStock } from '@/utils/labels.js'
 import { appendDigit, backspace as bufferBackspace, parseAmount, toBuffer } from '@/utils/numpadBuffer.js'
 
-const auth   = useAuthStore()
 const cart   = useCartStore()
-const layout = computed(() => auth.hasMinRole('warehouse_manager') ? AppLayout : StaffLayout)
+// Warenkorb ist die einheitliche Buchungsoberfläche — Buchen/Verlauf/Konto +
+// Abmelden im Footer gelten für jede Rolle, nicht nur Staff
+const layout = StaffLayout
 
 const barcode        = ref('')
 const barcodeInput    = ref(null)
+const qtyInput        = ref(null)
 const searching       = ref(false)
 const scanError       = ref('')
 const pendingArticle      = ref(null)
@@ -235,13 +263,31 @@ async function doSearch() {
     pendingAmountTouched.value = false
     pendingReference.value  = ''
     barcode.value = ''
+    searching.value = false
+    // Artikel gefunden — Fokus springt direkt auf das Mengenfeld zur Direkteingabe
+    nextTick(() => qtyInput.value?.focus())
   } catch (err) {
     scanError.value = err.response?.data?.error ?? 'Artikel nicht gefunden'
     barcode.value = ''
-  } finally {
     searching.value = false
     nextTick(() => barcodeInput.value?.focus())
   }
+}
+
+/** Mengenfeld ist fokussiert — physische/Bildschirm-Tastatur tippt direkt in den Mengenpuffer */
+function handleQtyKeydown(e) {
+  if (/^[0-9]$/.test(e.key)) {
+    appendPendingDigit(e.key)
+  } else if (e.key === '.' && pendingArticle.value?.unit === 'meter') {
+    appendPendingDigit('.')
+  } else if (e.key === 'Backspace' || e.key === 'Delete') {
+    pendingBackspace()
+  } else if (e.key === 'Enter') {
+    addPendingToCart()
+  } else if (e.key === 'Tab') {
+    return
+  }
+  e.preventDefault()
 }
 
 /** Numpad digit press — first press replaces the default '1' instead of appending to it */

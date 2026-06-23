@@ -20,6 +20,7 @@ const notificationsRouter = require('./routes/notifications');
 const usersRouter         = require('./routes/users');
 const settingsRouter      = require('./routes/settings');
 const exportRouter        = require('./routes/export');
+const stocktakesRouter    = require('./routes/stocktakes');
 
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
 
@@ -51,6 +52,7 @@ function createApp() {
   app.use('/api/users',         usersRouter);
   app.use('/api/settings',      settingsRouter);
   app.use('/api/export',        exportRouter);
+  app.use('/api/stocktakes',    stocktakesRouter);
 
   // ── API 404 — must come BEFORE SPA fallback ──────────────────────────────
   app.use('/api', notFoundHandler);

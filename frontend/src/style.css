@@ -64,3 +64,10 @@ body {
   .type-badge--rental     { background: rgba(20,184,166,.15);  color: var(--type-rental);     }
   .type-badge--cable      { background: rgba(234,179,8,.15);   color: var(--type-cable);      }
 }
+
+/* ── Print ──────────────────────────────────────────────────────────────────── */
+@media print {
+  .no-print { display: none !important; }
+  body, main { background: #fff !important; overflow: visible !important; }
+  main { height: auto !important; }
+}

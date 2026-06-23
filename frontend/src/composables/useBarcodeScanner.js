@@ -91,6 +91,15 @@ export function useBarcodeScanner(inputRef, onScan, { active } = {}) {
   function handleKeydown(e) {
     if (!isActive()) return
 
+    // Another field (e.g. Mengen-/Referenzfeld) already has focus — this
+    // keystroke belongs to it, not the scanner buffer. Bail out before the
+    // terminator check too, otherwise a fast Enter there could be misread
+    // as a completed scan.
+    const focusedNow = document.activeElement
+    if (focusedNow && focusedNow !== inputRef.value && ['INPUT','TEXTAREA','SELECT'].includes(focusedNow.tagName)) {
+      return
+    }
+
     const now = Date.now()
     const dt  = now - lastKeyTime
     lastKeyTime = now

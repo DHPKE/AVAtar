@@ -9,7 +9,7 @@
     <!-- ── Bottom navigation ──────────────────────────────────────────────────── -->
     <nav
       class="flex-shrink-0 flex"
-      style="background: var(--nav); border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom);"
+      style="background: var(--nav); border-top: 1px solid var(--border);"
     >
       <RouterLink
         v-for="tab in visibleTabs"
@@ -30,6 +30,16 @@
       </RouterLink>
     </nav>
 
+    <!-- ── Abmelden ──────────────────────────────────────────────────────────── -->
+    <button
+      type="button"
+      class="flex-shrink-0 w-full font-semibold text-sm transition-colors select-none"
+      style="height:48px; background:var(--nav); border-top:1px solid var(--border); color:var(--error); -webkit-tap-highlight-color:transparent; touch-action:manipulation; padding-bottom: env(safe-area-inset-bottom);"
+      @click="auth.logout()"
+    >
+      Abmelden
+    </button>
+
   </div>
 </template>
 
@@ -44,17 +54,6 @@ const cart  = useCartStore()
 const route = useRoute()
 
 // ── Inline SVG icon components ────────────────────────────────────────────────
-const IconScan = {
-  render: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, [
-    h('path', { d: 'M3 7V5a2 2 0 0 1 2-2h2' }),
-    h('path', { d: 'M17 3h2a2 2 0 0 1 2 2v2' }),
-    h('path', { d: 'M21 17v2a2 2 0 0 1-2 2h-2' }),
-    h('path', { d: 'M7 21H5a2 2 0 0 1-2-2v-2' }),
-    h('line', { x1: '7', y1: '12', x2: '17', y2: '12' }),
-    h('line', { x1: '12', y1: '7', x2: '12', y2: '17' }),
-  ]),
-}
-
 const IconHistory = {
   render: () => h('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, [
     h('circle', { cx: '12', cy: '12', r: '9' }),
@@ -87,7 +86,6 @@ const IconCart = {
 }
 
 const TABS = [
-  { to: '/scan',          label: 'Scannen',        icon: IconScan,    minRole: 'staff'             },
   { to: '/buchen',        label: 'Buchen',         icon: IconCart,    minRole: 'staff', badge: true },
   { to: '/verlauf',       label: 'Verlauf',        icon: IconHistory, minRole: 'staff'             },
   { to: '/staff-verleih', label: 'Geräteverleih',  icon: IconRental,  minRole: 'warehouse_manager' },

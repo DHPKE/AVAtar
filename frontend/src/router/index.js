@@ -90,6 +90,24 @@ const routes = [
     meta:      { requiresAuth: true, minRole: 'warehouse_manager' },
   },
   {
+    path:      '/inventur',
+    name:      'Stocktakes',
+    component: () => import('@/views/StocktakesView.vue'),
+    meta:      { requiresAuth: true, minRole: 'warehouse_manager' },
+  },
+  {
+    path:      '/inventur/:id',
+    name:      'StocktakeDetail',
+    component: () => import('@/views/StocktakeDetailView.vue'),
+    meta:      { requiresAuth: true, minRole: 'warehouse_manager' },
+  },
+  {
+    path:      '/scanliste',
+    name:      'ScanList',
+    component: () => import('@/views/ScanListView.vue'),
+    meta:      { requiresAuth: true, minRole: 'warehouse_manager' },
+  },
+  {
     path:      '/lieferanten',
     name:      'Suppliers',
     component: () => import('@/views/SuppliersView.vue'),
@@ -134,8 +152,8 @@ router.beforeEach(async (to) => {
 
   // Role guard
   if (to.meta.minRole && !auth.hasMinRole(to.meta.minRole)) {
-    // Staff trying to access admin routes → send to scan
-    return auth.role === 'staff' ? '/scan' : '/dashboard'
+    // Staff trying to access admin routes → send to Warenkorb
+    return auth.role === 'staff' ? '/buchen' : '/dashboard'
   }
 
   return true

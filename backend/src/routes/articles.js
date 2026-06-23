@@ -76,10 +76,19 @@ router.get('/', (req, res, next) => {
   try {
     const db = getDb();
     const {
-      type, category_id, group_id, active = '1',
-      search, low_stock,
+      type, category_id, group_id, supplier_id, active = '1',
+      search, low_stock, sort,
       limit = '50', offset = '0',
     } = req.query;
+
+    const SORT_COLUMNS = {
+      name:          'a.name',
+      supplier_name: 's.name',
+      category_name: 'c.name',
+      group_name:    'g.name',
+      manufacturer:  'a.manufacturer',
+      created_at:    'a.created_at',
+    };
 
     const conds  = [];
     const params = [];
@@ -101,6 +110,10 @@ router.get('/', (req, res, next) => {
       conds.push('a.group_id = ?');
       params.push(Number(group_id));
     }
+    if (supplier_id) {
+      conds.push('a.supplier_id = ?');
+      params.push(Number(supplier_id));
+    }
     if (search?.trim()) {
       conds.push('(a.name LIKE ? OR a.article_number LIKE ? OR a.barcode LIKE ?)');
       const t = `%${search.trim()}%`;
@@ -113,12 +126,13 @@ router.get('/', (req, res, next) => {
       )`);
     }
 
-    const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
-    const lim   = Math.min(Number(limit) || 50, 200);
-    const off   = Number(offset) || 0;
+    const where   = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+    const orderBy = SORT_COLUMNS[sort] || SORT_COLUMNS.name;
+    const lim     = Math.min(Number(limit) || 50, 200);
+    const off     = Number(offset) || 0;
 
     const articles = db.prepare(
-      `${BASE_SELECT} ${where} ORDER BY a.name LIMIT ? OFFSET ?`
+      `${BASE_SELECT} ${where} ORDER BY ${orderBy} LIMIT ? OFFSET ?`
     ).all(...params, lim, off);
 
     const { total } = db.prepare(
@@ -164,6 +178,7 @@ router.post('/', requireMinRole('warehouse_manager'), (req, res, next) => {
       stock_qty = 0, stock_meters = 0, min_stock = 0,
       bundle_size, unit,
       location_row, location_shelf, location_bin,
+      manufacturer, model_type,
     } = req.body;
 
     if (!name?.trim())  return next(createError(400, 'Name erforderlich'));
@@ -172,7 +187,7 @@ router.post('/', requireMinRole('warehouse_manager'), (req, res, next) => {
       return next(createError(400, `Ungültiger Typ. Erlaubt: ${VALID_TYPES.join(', ')}`));
     }
 
-    const resolvedUnit = unit ?? defaultUnit(type);
+    const resolvedUnit = (unit?.trim() || undefined) ?? defaultUnit(type);
     if (!VALID_UNITS.includes(resolvedUnit)) {
       return next(createError(400, `Ungültige Einheit. Erlaubt: ${VALID_UNITS.join(', ')}`));
     }
@@ -185,8 +200,9 @@ router.post('/', requireMinRole('warehouse_manager'), (req, res, next) => {
         (article_number, barcode, name, description, type,
          category_id, group_id, supplier_id, purchase_price,
          stock_qty, stock_meters, min_stock,
-         bundle_size, unit, location_row, location_shelf, location_bin)
-      VALUES (?,?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?,?,?)
+         bundle_size, unit, location_row, location_shelf, location_bin,
+         manufacturer, model_type)
+      VALUES (?,?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?,?,?, ?,?)
     `).run(
       article_number,
       barcode?.trim()     || null,
@@ -205,6 +221,8 @@ router.post('/', requireMinRole('warehouse_manager'), (req, res, next) => {
       location_row?.trim()   || null,
       location_shelf?.trim() || null,
       location_bin?.trim()   || null,
+      manufacturer?.trim()   || null,
+      model_type?.trim()     || null,
     );
 
     const article = db.prepare(`${BASE_SELECT} WHERE a.id = ?`).get(lastInsertRowid);
@@ -230,6 +248,7 @@ router.put('/:id', requireMinRole('warehouse_manager'), (req, res, next) => {
       category_id, group_id, supplier_id, purchase_price,
       min_stock, bundle_size, unit,
       location_row, location_shelf, location_bin, active,
+      manufacturer, model_type,
     } = req.body;
 
     if (type && !VALID_TYPES.includes(type)) {
@@ -255,7 +274,9 @@ router.put('/:id', requireMinRole('warehouse_manager'), (req, res, next) => {
         location_row   = ?,
         location_shelf = ?,
         location_bin   = ?,
-        active         = ?
+        active         = ?,
+        manufacturer   = ?,
+        model_type     = ?
       WHERE id = ?
     `).run(
       barcode        !== undefined ? (barcode?.trim() || null) : article.barcode,
@@ -273,6 +294,8 @@ router.put('/:id', requireMinRole('warehouse_manager'), (req, res, next) => {
       location_shelf        !== undefined ? (location_shelf?.trim() || null) : article.location_shelf,
       location_bin          !== undefined ? (location_bin?.trim()   || null) : article.location_bin,
       active                !== undefined ? (active ? 1 : 0) : article.active,
+      manufacturer          !== undefined ? (manufacturer?.trim() || null) : article.manufacturer,
+      model_type            !== undefined ? (model_type?.trim()   || null) : article.model_type,
       article.id,
     );
 

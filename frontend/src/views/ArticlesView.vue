@@ -41,6 +41,24 @@
           <option v-for="g in groups" :key="g.id" :value="g.id">{{ g.name }}</option>
         </select>
 
+        <select v-model="filterSupplier" @change="fetchArticles"
+          class="rounded-lg px-2 text-sm"
+          style="height:36px;background:var(--card);border:1px solid var(--border);color:var(--text);outline:none;">
+          <option value="">Alle Lieferanten</option>
+          <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+        </select>
+
+        <select v-model="sortBy" @change="fetchArticles"
+          class="rounded-lg px-2 text-sm"
+          style="height:36px;background:var(--card);border:1px solid var(--border);color:var(--text);outline:none;">
+          <option value="name">Sortierung: Name</option>
+          <option value="supplier_name">Sortierung: Lieferant</option>
+          <option value="category_name">Sortierung: Kategorie</option>
+          <option value="group_name">Sortierung: Gruppe</option>
+          <option value="manufacturer">Sortierung: Hersteller</option>
+          <option value="created_at">Sortierung: Hinzugefügt</option>
+        </select>
+
         <label class="flex items-center gap-1.5 text-sm cursor-pointer select-none" style="color:var(--muted);">
           <input type="checkbox" v-model="filterLowStock" @change="fetchArticles" class="rounded" />
           Niedrig-Bestand
@@ -226,6 +244,7 @@ const articles       = ref([])
 const total          = ref(0)
 const categories     = ref([])
 const groups         = ref([])
+const suppliers      = ref([])
 const loading        = ref(false)
 const page           = ref(1)
 const limit          = 50
@@ -234,7 +253,9 @@ const search         = ref('')
 const filterType     = ref('')
 const filterCategory = ref('')
 const filterGroup    = ref('')
+const filterSupplier = ref('')
 const filterLowStock = ref(false)
+const sortBy         = ref('name')
 
 // ── Panel ─────────────────────────────────────────────────────────────────────
 const panelOpen  = ref(false)
@@ -247,6 +268,7 @@ const emptyForm = () => ({
   category_id:'', group_id:'', supplier_id:'', purchase_price:'',
   min_stock:0, stock_qty:0, stock_meters:0, bundle_size:'', unit:'',
   location_row:'', location_shelf:'', location_bin:'',
+  manufacturer:'', model_type:'',
 })
 const form = ref(emptyForm())
 
@@ -257,8 +279,11 @@ const formFields = computed(() => {
     { key:'name',           label:'Bezeichnung',   required:true },
     { key:'type',           label:'Typ',            required:true, type:'select', options: VALID_TYPES.map(v => ({ value:v, label:TYPE_META[v].label })) },
     { key:'barcode',        label:'Barcode / EAN',  placeholder:'optional' },
+    { key:'manufacturer',   label:'Hersteller',     placeholder:'optional' },
+    { key:'model_type',     label:'Typ (Modell)',   placeholder:'optional' },
     { key:'category_id',    label:'Kategorie',      type:'select', options: categories.value.map(c => ({ value:c.id, label:c.name })) },
     { key:'group_id',       label:'Gruppe',         type:'select', options: groups.value.map(g => ({ value:g.id, label:g.name })) },
+    { key:'supplier_id',    label:'Lieferant',      type:'select', options: suppliers.value.map(s => ({ value:s.id, label:s.name })) },
     { key:'purchase_price', label:'Einkaufspreis',  inputType:'number', step:'0.01', placeholder:'€' },
     { key:'min_stock',      label:t === 'cable' ? 'Mindestbestand (m)' : 'Mindestbestand (Stk)', inputType:'number', step: t === 'cable' ? '0.5' : '1' },
   ]
@@ -293,7 +318,9 @@ async function fetchArticles() {
       ...(filterType.value     && { type:         filterType.value }),
       ...(filterCategory.value && { category_id: filterCategory.value }),
       ...(filterGroup.value    && { group_id:     filterGroup.value }),
+      ...(filterSupplier.value && { supplier_id: filterSupplier.value }),
       ...(filterLowStock.value && { low_stock:    '1' }),
+      ...(sortBy.value         && { sort:         sortBy.value }),
     })
     const { data } = await api.get(`/articles?${params}`)
     articles.value = data.articles
@@ -305,12 +332,14 @@ async function fetchArticles() {
 
 onMounted(async () => {
   fetchArticles()
-  const [{ data: catData }, { data: grpData }] = await Promise.all([
+  const [{ data: catData }, { data: grpData }, { data: supData }] = await Promise.all([
     api.get('/categories'),
     api.get('/groups'),
+    api.get('/suppliers'),
   ])
   categories.value = catData.categories
   groups.value     = grpData.groups
+  suppliers.value  = supData.suppliers
 })
 
 // ── Panel actions ─────────────────────────────────────────────────────────────

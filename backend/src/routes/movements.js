@@ -382,3 +382,4 @@ router.post('/batch', (req, res, next) => {
 });
 
 module.exports = router;
+module.exports.applyMovement = applyMovement;

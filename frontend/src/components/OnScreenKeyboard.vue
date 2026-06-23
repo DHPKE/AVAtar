@@ -43,18 +43,22 @@
 </template>
 
 <script setup>
-defineProps({
+const props = defineProps({
   showEnter:     { type: Boolean, default: true },
+  showNumbers:   { type: Boolean, default: true },
   enterLabel:    { type: String,  default: 'Weiter' },
   enterDisabled: { type: Boolean, default: false },
 })
 
 defineEmits(['key', 'backspace', 'clear', 'enter'])
 
-const rows = [
-  ['1','2','3','4','5','6','7','8','9','0'],
+const letterRows = [
   ['Q','W','E','R','T','Y','U','I','O','P'],
   ['A','S','D','F','G','H','J','K','L'],
   ['Z','X','C','V','B','N','M'],
 ]
+
+const rows = props.showNumbers
+  ? [['1','2','3','4','5','6','7','8','9','0'], ...letterRows]
+  : letterRows
 </script>

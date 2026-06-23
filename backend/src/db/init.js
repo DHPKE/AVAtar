@@ -89,6 +89,10 @@ function _migrateSchema() {
   // Lagerbewegungen: Verknüpfung zusammengehöriger Buchungen (Sammelartikel)
   _ensureColumn('movements', 'group_ref', 'TEXT');
   db.exec('CREATE INDEX IF NOT EXISTS idx_movements_group_ref ON movements(group_ref)');
+
+  // Artikel: Hersteller + freie Typenbezeichnung (z.B. Modellbezeichnung)
+  _ensureColumn('articles', 'manufacturer', 'TEXT');
+  _ensureColumn('articles', 'model_type',   'TEXT');
 }
 
 /**

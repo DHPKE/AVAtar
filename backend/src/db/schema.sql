@@ -80,6 +80,8 @@ CREATE TABLE IF NOT EXISTS articles (
   location_shelf TEXT,                                   -- Lagerort: Regal (optional)
   location_bin   TEXT,                                   -- Lagerort: Fach (optional)
   image_path     TEXT,
+  manufacturer   TEXT,                                   -- Hersteller
+  model_type     TEXT,                                   -- freie Typenbezeichnung (z.B. Modellbezeichnung)
   active         INTEGER NOT NULL DEFAULT 1,
   created_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
   updated_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
@@ -140,6 +142,34 @@ CREATE TABLE IF NOT EXISTS movements (
   created_at       TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 
+-- ─── Inventur (Stocktake) ─────────────────────────────────────────────────────
+-- Ein Inventur-Lauf erfasst für eine Menge von Artikeln den Soll-Bestand
+-- (Snapshot bei Erstellung) und lässt darauf den gezählten Ist-Bestand
+-- eintragen. Beim Abschließen wird je Position mit Abweichung eine
+-- 'correction'-Buchung erzeugt (siehe routes/stocktakes.js).
+CREATE TABLE IF NOT EXISTS stocktakes (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  name        TEXT    NOT NULL,
+  status      TEXT    NOT NULL DEFAULT 'open' CHECK (status IN ('open','closed')),
+  created_by  INTEGER NOT NULL REFERENCES users(id),
+  created_at  TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+  closed_at   TEXT,
+  closed_by   INTEGER REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS stocktake_items (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  stocktake_id INTEGER NOT NULL REFERENCES stocktakes(id) ON DELETE CASCADE,
+  article_id   INTEGER NOT NULL REFERENCES articles(id),
+  soll_qty     INTEGER NOT NULL DEFAULT 0,             -- Bestand zum Zeitpunkt der Inventur-Erstellung
+  soll_meters  REAL    NOT NULL DEFAULT 0,
+  ist_qty      INTEGER,                                 -- NULL = noch nicht gezählt
+  ist_meters   REAL,
+  counted_at   TEXT,
+  counted_by   INTEGER REFERENCES users(id),
+  UNIQUE (stocktake_id, article_id)
+);
+
 -- ─── Einstellungen (Key-Value Store) ────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS settings (
   key        TEXT PRIMARY KEY,
@@ -165,6 +195,7 @@ CREATE INDEX IF NOT EXISTS idx_serial_numbers_status   ON serial_numbers(status)
 CREATE INDEX IF NOT EXISTS idx_movements_article_id    ON movements(article_id);
 CREATE INDEX IF NOT EXISTS idx_movements_created_at    ON movements(created_at);
 CREATE INDEX IF NOT EXISTS idx_rentals_returned_at     ON rentals(returned_at);
+CREATE INDEX IF NOT EXISTS idx_stocktake_items_stocktake_id ON stocktake_items(stocktake_id);
 -- Hinweis: idx_articles_group_id und idx_movements_group_ref werden NICHT hier,
 -- sondern in init.js (_migrateSchema) angelegt — erst NACHDEM die Spalten
 -- group_id/group_ref per ALTER TABLE auf Bestands-DBs ergänzt wurden.

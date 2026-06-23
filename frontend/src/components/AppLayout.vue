@@ -11,7 +11,7 @@
 
     <!-- ── Sidebar ───────────────────────────────────────────────────────────── -->
     <aside
-      class="flex-shrink-0 flex flex-col z-30 transition-all duration-200"
+      class="no-print flex-shrink-0 flex flex-col z-30 transition-all duration-200"
       :class="sidebarOpen ? 'w-48' : 'w-0 overflow-hidden'"
       :style="`background: var(--nav); border-right: 1px solid var(--border);
                ${isNarrow ? 'position:fixed;top:0;left:0;height:100%;' : 'position:relative;'}`"
@@ -60,7 +60,7 @@
       <!-- Top bar — hamburger on iPad, nothing on desktop -->
       <header
         v-if="isNarrow"
-        class="flex-shrink-0 flex items-center gap-3 px-4"
+        class="no-print flex-shrink-0 flex items-center gap-3 px-4"
         style="height:52px; background:var(--nav); border-bottom:1px solid var(--border);"
       >
         <button
@@ -111,9 +111,10 @@ onUnmounted(() => window.removeEventListener('resize', onResize))
 // ── Navigation ────────────────────────────────────────────────────────────────
 const NAV = [
   { to: '/dashboard',     label: 'Dashboard',      minRole: 'staff'             },
-  { to: '/scan',          label: 'Scannen',        minRole: 'staff'             },
   { to: '/buchen',        label: 'Warenkorb',      minRole: 'staff'             },
   { to: '/artikel',       label: 'Artikel',        minRole: 'staff'             },
+  { to: '/inventur',      label: 'Inventur',       minRole: 'warehouse_manager' },
+  { to: '/scanliste',     label: 'Scanliste',      minRole: 'warehouse_manager' },
   { to: '/verleihe',      label: 'Geräteverleih',  minRole: 'warehouse_manager' },
   { to: '/kategorien',    label: 'Kategorien',     minRole: 'warehouse_manager' },
   { to: '/gruppen',       label: 'Gruppen',        minRole: 'warehouse_manager' },
