@@ -8,9 +8,11 @@ const { createError }  = require('../middleware/errorHandler');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Strip password_hash before sending user data to client */
+/** Strips both secret hashes — pin_hash guards only a 5-digit PIN (100k
+ *  combinations), so leaking it to any client would make offline brute-
+ *  force trivial despite bcrypt. */
 function sanitiseUser(user) {
-  const { password_hash, ...safe } = user;
+  const { password_hash, pin_hash, ...safe } = user;
   return safe;
 }
 
@@ -162,6 +164,44 @@ router.post('/change-password', authenticate, (req, res, next) => {
     db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, user.id);
 
     res.json({ message: 'Passwort erfolgreich geändert' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── POST /api/auth/change-pin ────────────────────────────────────────────────
+
+/**
+ * Body: { currentPassword, newPin }
+ * Any authenticated user with a Kürzel can change their own Kürzel-Login PIN.
+ * Requires the account password to confirm identity (same pattern as
+ * change-password) — a 5-digit PIN alone is too weak to gate its own change.
+ */
+router.post('/change-pin', authenticate, (req, res, next) => {
+  try {
+    const { currentPassword, newPin } = req.body;
+
+    if (!currentPassword || !newPin) {
+      return next(createError(400, 'Aktuelles Passwort und neue PIN erforderlich'));
+    }
+    if (!/^[0-9]{5}$/.test(String(newPin).trim())) {
+      return next(createError(400, 'PIN muss 5 Ziffern sein'));
+    }
+
+    const db   = getDb();
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.sub);
+
+    if (!user || !bcrypt.compareSync(currentPassword, user.password_hash)) {
+      return next(createError(401, 'Aktuelles Passwort ist falsch'));
+    }
+    if (!user.shortcode) {
+      return next(createError(400, 'Kein Kürzel hinterlegt — bitte vom Administrator vergeben lassen'));
+    }
+
+    const newHash = bcrypt.hashSync(String(newPin).trim(), 12);
+    db.prepare('UPDATE users SET pin_hash = ? WHERE id = ?').run(newHash, user.id);
+
+    res.json({ message: 'PIN erfolgreich geändert' });
   } catch (err) {
     next(err);
   }

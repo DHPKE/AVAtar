@@ -7,8 +7,11 @@ const { createError }    = require('../middleware/errorHandler');
 
 router.use(authenticate, requireMinRole('admin'));
 
+/** Strips both secret hashes — pin_hash guards only a 5-digit PIN (100k
+ *  combinations), so leaking it to any client would make offline brute-
+ *  force trivial despite bcrypt. */
 function sanitise(user) {
-  const { password_hash, ...safe } = user;
+  const { password_hash, pin_hash, ...safe } = user;
   return safe;
 }
 

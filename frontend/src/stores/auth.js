@@ -81,10 +81,14 @@ export const useAuthStore = defineStore('auth', () => {
     await api.post('/auth/change-password', { currentPassword, newPassword })
   }
 
+  async function changePin(currentPassword, newPin) {
+    await api.post('/auth/change-pin', { currentPassword, newPin })
+  }
+
   return {
     token, user,
     isAuthenticated, role, roleLabel,
     hasMinRole,
-    login, loginCode, logout, restoreSession, changePassword,
+    login, loginCode, logout, restoreSession, changePassword, changePin,
   }
 })
